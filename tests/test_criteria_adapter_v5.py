@@ -1,0 +1,86 @@
+from types import SimpleNamespace
+
+import pytest
+
+from rn.criteria_adapter_v5 import (
+    build_actual_criteria,
+    load_inspection_technician_policy,
+    supports_inspection_technician,
+)
+
+
+def _request(title="检验技术员", profile_id="PROFILE-412167F2937C", **fields):
+    base = {
+        "position_title": title,
+        "location": "上海",
+        "headcount": 2,
+        "salary_range": "10-15K",
+        "extra_hard_requirements": [],
+    }
+    base.update(fields)
+    return {
+        "request_id": "REQ-1",
+        "position_title": title,
+        "request": {
+            "fields": base,
+            "profile_match": {"status": "MATCHED", "profile_id": profile_id},
+        },
+    }
+
+
+def test_policy_is_v23_inspection_technician_contract():
+    policy = load_inspection_technician_policy()
+    assert policy["policy_id"] == "inspection-technician-v1"
+    assert policy["schema_version"] == "5.0"
+    assert set(policy["supported_profile_ids"]) == {
+        "PROFILE-91603AA55F6E",
+        "PROFILE-412167F2937C",
+    }
+    assert any(x["name"] == "检验科经验" and x["decision_mode"] == "resume_evidence" for x in policy["experiences"])
+    assert all("score" not in str(k).lower() for k in policy.keys())
+
+
+def test_scope_supports_only_generic_freshgrad_and_social_inspection_technician():
+    assert supports_inspection_technician(_request()) is True
+    assert supports_inspection_technician(_request(profile_id="PROFILE-91603AA55F6E")) is True
+    assert supports_inspection_technician(_request(title="检验技术员", profile_id="")) is True
+    assert supports_inspection_technician(_request(title="微生物检验技术员", profile_id="PROFILE-0C5EA85E3C37")) is False
+    assert supports_inspection_technician(_request(title="二代测序检验技术员（全流程岗）", profile_id="PROFILE-4418074B1BD0")) is False
+    assert supports_inspection_technician(_request(title="医学联络官", profile_id="PROFILE-2FC5FDEBF75E")) is False
+
+
+def test_actual_criteria_uses_request_location_and_keeps_internal_decision_modes_hidden_in_contract():
+    request = _request(location="南京")
+    profile = SimpleNamespace(profile_id="PROFILE-412167F2937C", name="检验技术员（社招）")
+    criteria = build_actual_criteria(request, profile)
+    assert criteria["policy_id"] == "inspection-technician-v1"
+    assert criteria["position"]["location"] == "南京"
+    assert criteria["position"]["headcount"] == 2
+    assert criteria["hard_filters"]["location"] == "南京"
+    modes = {row["decision_mode"] for row in criteria["criteria"]}
+    assert modes == {"resume_evidence", "interview_verify", "preference"}
+    assert criteria["product_visibility"]["decision_mode"] == "internal_only"
+
+
+def test_explicit_extra_must_haves_become_hard_gate_criteria():
+    request = _request(extra_hard_requirements=["必须有罗氏免疫平台实操经验", "必须接受夜班"])
+    criteria = build_actual_criteria(request)
+    extras = [x for x in criteria["criteria"] if x["dimension"] == "request_extra"]
+    assert [x["name"] for x in extras] == ["必须有罗氏免疫平台实操经验", "必须接受夜班"]
+    assert all(x["level"] == "必须" for x in extras)
+    assert all(x["decision_mode"] == "hard_gate" for x in extras)
+
+
+def test_no_or_empty_extra_requirement_does_not_create_fake_gate():
+    request = _request(extra_hard_requirements="没有")
+    criteria = build_actual_criteria(request)
+    assert not [x for x in criteria["criteria"] if x["dimension"] == "request_extra"]
+
+
+def test_policy_declares_broad_retrieval_queries_for_mineru_and_alibaba_resumes():
+    policy = load_inspection_technician_policy()
+    queries = policy.get("retrieval_queries") or []
+    assert "检验技术员" in queries
+    assert "医学检验" in queries
+    assert "检验科" in queries
+    assert "检验" in queries

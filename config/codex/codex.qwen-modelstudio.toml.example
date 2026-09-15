@@ -1,0 +1,14 @@
+# Replace WORKSPACE_ID and region with your Alibaba Cloud Model Studio endpoint.
+# Example shape from Model Studio's OpenAI-compatible Responses API docs:
+# https://WORKSPACE_ID.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+model = "YOUR_QWEN_MODEL"
+model_provider = "qwen_modelstudio"
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+[model_providers.qwen_modelstudio]
+name = "Alibaba Cloud Model Studio / Qwen"
+base_url = "https://WORKSPACE_ID.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+env_key = "DASHSCOPE_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false

@@ -1,0 +1,13 @@
+Recruiter-Na public source distribution
+
+Copyright 2026 Recruiter-Na Contributors
+
+This repository is licensed under Apache License 2.0. The public distribution
+intentionally excludes production credentials, tenant configuration, candidate
+resumes, internal position/JD source libraries, owner-scoped request records,
+and private runtime state.
+
+The `vendor/codexharness-im` adapter is excluded because its bundled NOTICE
+declares separate unresolved provenance and an UNLICENSED status. It is not
+licensed or distributed by this repository. Deployers must obtain and assess
+any replacement adapter independently before use.

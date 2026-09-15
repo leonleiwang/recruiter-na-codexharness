@@ -1,0 +1,36 @@
+{
+  "schema_version": "3.0",
+  "job_id": "J-DEMO-001",
+  "job_name": "平台运维工程师（示例）",
+  "tags": [
+    {
+      "tag_id": "CAP-HA",
+      "name": "高可用架构与稳定性治理",
+      "category": "capability",
+      "weight": 0.4,
+      "definition": "能够实施高可用、容灾、故障隔离或稳定性治理"
+    },
+    {
+      "tag_id": "EXP-OPS",
+      "name": "生产运维与故障响应经验",
+      "category": "experience",
+      "weight": 0.4,
+      "definition": "有生产环境运维、故障处理、复盘改进经历"
+    },
+    {
+      "tag_id": "TRA-OWN",
+      "name": "结果责任与闭环意识",
+      "category": "traits",
+      "weight": 0.2,
+      "definition": "简历中有明确承担结果、推进问题闭环的行为证据"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-LOC",
+      "name": "能够接受目标城市现场办公",
+      "gate_type": "HARD_GATE",
+      "description": "只有候选人明确拒绝目标城市时才能FAIL"
+    }
+  ]
+}

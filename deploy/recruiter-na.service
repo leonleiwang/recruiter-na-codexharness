@@ -1,0 +1,24 @@
+[Unit]
+Description=Recruiter-Na v5 Hiring Manager Digital Recruiter
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=recruiter-na
+Group=recruiter-na
+UMask=0077
+WorkingDirectory=/opt/recruiter-na/app
+EnvironmentFile=/etc/recruiter-na/recruiter-na.env
+Environment=PYTHONPATH=/opt/recruiter-na/app/runtime
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/node /opt/recruiter-na/app/im/recruiter-na.mjs
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/recruiter-na/app/workspace /opt/recruiter-na/codex-home
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+# Codex has a built-in Ollama provider for local OSS models.
+model = "qwen3-coder"
+model_provider = "ollama"
+approval_policy = "never"
+sandbox_mode = "read-only"

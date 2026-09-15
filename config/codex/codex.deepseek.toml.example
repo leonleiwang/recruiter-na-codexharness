@@ -1,0 +1,12 @@
+# Current Codex uses the Responses wire API for user-defined providers.
+model = "YOUR_DEEPSEEK_MODEL"
+model_provider = "deepseek"
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com"
+env_key = "DEEPSEEK_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false

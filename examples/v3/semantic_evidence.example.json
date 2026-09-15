@@ -1,0 +1,52 @@
+{
+  "schema_version": "3.0",
+  "candidate_id": "C-DEMO-001",
+  "job_id": "J-DEMO-001",
+  "evaluation_status": "COMPLETE",
+  "tag_assessments": [
+    {
+      "tag_id": "CAP-HA",
+      "evidence_level": "QUANTIFIED_CASE",
+      "confidence": 0.96,
+      "evidence": [
+        {
+          "text": "搭建Keepalived高可用方案并推动故障复盘机制，将核心服务月可用性提升至99.95%",
+          "source_path": "work_experiences[1].description"
+        }
+      ],
+      "reasoning_summary": "有明确高可用实施行为和量化可用性结果"
+    },
+    {
+      "tag_id": "EXP-OPS",
+      "evidence_level": "CASE",
+      "confidence": 0.94,
+      "evidence": [
+        {
+          "text": "负责生产环境Linux服务器、监控告警及故障处理",
+          "source_path": "work_experiences[0].description"
+        }
+      ],
+      "reasoning_summary": "有明确生产运维与故障处理职责"
+    },
+    {
+      "tag_id": "TRA-OWN",
+      "evidence_level": "WEAK",
+      "confidence": 0.72,
+      "evidence": [
+        {
+          "text": "推动故障复盘机制",
+          "source_path": "work_experiences[1].description"
+        }
+      ],
+      "reasoning_summary": "有推进闭环的线索，但简历不足以证明稳定人格特质"
+    }
+  ],
+  "requirement_assessments": [
+    {
+      "requirement_id": "REQ-LOC",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reasoning_summary": "示例简历未说明是否接受目标城市现场办公，需要招聘沟通确认"
+    }
+  ]
+}

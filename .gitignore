@@ -1,0 +1,48 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+# Local environments and generated files
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.DS_Store
+
+# Runtime state, logs, and owner-scoped request data
+workspace/
+backups/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.log
+
+# Private or tenant-owned recruiting data; never publish these paths.
+data/dev/
+data/generated/
+data/manifests/
+data/quarantine/
+data/source/
+data/FOUNDATION_STATE.json
+
+# This adapter carries separate, unresolved provenance and is intentionally
+# excluded from the Apache-2.0 public distribution.
+vendor/codexharness-im/
+
+# Historical internal materials are not public product documentation.
+docs/internal-skills-v3.4/
+docs/legacy-v3-requirements/
+docs/legacy-v3-requisitions/
+
+# Local recovery copies and presentation artifacts may contain historical data.
+*.backup-*
+templates/简历推送报告.html

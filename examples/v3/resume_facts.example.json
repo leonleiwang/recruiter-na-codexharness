@@ -1,0 +1,24 @@
+{
+  "candidate_id": "C-DEMO-001",
+  "name": "示例候选人",
+  "degree": "本科",
+  "resume_created_at": "2026-08-28",
+  "resume_source": "主动投递",
+  "work_experiences": [
+    {
+      "company": "甲科技",
+      "position": "运维工程师",
+      "start_date": "2021-07",
+      "end_date": "2024-06",
+      "description": "负责生产环境Linux服务器、监控告警及故障处理。"
+    },
+    {
+      "company": "乙科技",
+      "position": "SRE",
+      "start_date": "2024-07",
+      "end_date": "至今",
+      "description": "搭建Keepalived高可用方案并推动故障复盘机制，将核心服务月可用性提升至99.95%。"
+    }
+  ],
+  "raw_text": "示例文本：搭建Keepalived高可用方案并推动故障复盘机制，将核心服务月可用性提升至99.95%。"
+}

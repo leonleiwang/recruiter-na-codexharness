@@ -1,0 +1,131 @@
+{
+  "schema_version": "5.0",
+  "policy_id": "inspection-technician-v1",
+  "policy_name": "检验技术员 Candidate Decision Policy",
+  "business_baseline": "Yushilong_allprocess_v2.3 / actual_profile schema v4.1",
+  "accepted_for_integration": "2026-09-11",
+  "role_name": "检验技术员",
+  "role_type": "operations",
+  "department": "实验室部",
+  "supported_profile_ids": [
+    "PROFILE-91603AA55F6E",
+    "PROFILE-412167F2937C"
+  ],
+  "supported_titles": [
+    "检验技术员",
+    "检验技术员（应届）",
+    "检验技术员（社招）"
+  ],
+  "description": "负责常规标本（涵盖临检、免疫、分子等多学科）的接收、检测、结果审核与报告发布，执行室内质控与室间质评，承担要素管理及新员工带教工作，确保检测结果准确、及时交付。",
+  "biz_challenge": [
+    "多学科多项目并行：需同时掌握不同方法学的检测项目，各项目操作流程和判读标准存在差异，要求快速切换和综合判断能力。",
+    "大样本量高时效压力：体检季等高峰期间日样本量激增，需在保证质量的前提下高效完成检测和报告发布。",
+    "白夜班交替协作：一审和二审之间、白班和夜班之间的交接依赖口头沟通和手工记录，信息同步不到位可能导致结果误发。",
+    "异常识别与独立处置：质控失控、结果异常、临床投诉等情况要求技术员具备独立分析和初步处置能力。"
+  ],
+  "hard_filters": {
+    "education": "大专及以上，医学检验/医学检验技术/临床医学/生物技术等相关专业",
+    "certification": "必须持有检验士/检验师资格证（应届可接受已报名待考）",
+    "location": "杭州",
+    "red_lines": [
+      "纯科研实验室经验，无临床检验实操经历",
+      "检验资格证书已过期/暂停/吊销"
+    ]
+  },
+  "capabilities": [
+    {
+      "name": "规范操作与执行能力",
+      "level": "必须",
+      "decision_mode": "resume_evidence",
+      "description": "严格按标准操作规程执行技术操作，确保每一步操作规范、可追溯、质量可控",
+      "evidence_hints": "提及SOP/操作规程/标准化操作/操作规范；实验室/检验科工作经历"
+    },
+    {
+      "name": "问题分析与解决能力",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "快速辨识问题根因，制定对策，迅速响应突发负面状况",
+      "evidence_hints": "提及排查/根因分析/异常处理/质控失控/结果异常追溯/临床投诉处理"
+    },
+    {
+      "name": "快速学习能力",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "快速理解并掌握新的操作流程、仪器使用和检测项目，能在短时间内通过带教达到独立上手水平",
+      "evidence_hints": "提及新人期快速上手/多项目学习/自写操作清单/举一反三"
+    },
+    {
+      "name": "沟通表达能力",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "准确传达信息，理解他人诉求，建立良好的交流氛围",
+      "evidence_hints": "提及交接沟通/临床沟通/跨部门协作/异常信息传递"
+    },
+    {
+      "name": "团队合作能力",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "有效沟通分工，担责互信，将团队成败置于个人利益前",
+      "evidence_hints": "提及排班协作/帮助同事/高峰期协调/团队配合"
+    }
+  ],
+  "experiences": [
+    {
+      "name": "检验科经验",
+      "level": "必须",
+      "decision_mode": "resume_evidence",
+      "description": "≥1年医院检验科或独立医学实验室(ICL)/第三方医学检验所检验工作经历",
+      "evidence_hints": "机构名称含检验科/ICL/医学检验所/第三方检验/迪安/金域/艾迪康等"
+    },
+    {
+      "name": "试剂管理经验",
+      "level": "优先",
+      "decision_mode": "preference",
+      "description": "掌握检验试剂的领用、库存核对、效期管理及新批次质控比对方法",
+      "evidence_hints": "提及试剂管理/库存/定标/质控验证/试剂更换"
+    },
+    {
+      "name": "人员带教经验",
+      "level": "优先",
+      "decision_mode": "preference",
+      "description": "能按带教计划指导新员工或实习生掌握基础操作技能和审核要点",
+      "evidence_hints": "提及带教/培训/指导新人/实习生管理"
+    }
+  ],
+  "traits": [
+    {
+      "name": "抗压",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "在体检季等高峰期间样本量激增、连续加班的情况下保持操作稳定性和结果准确性",
+      "evidence_hints": "提及急诊/高峰期/大批量标本/TAT压力/加班/高强度工作"
+    },
+    {
+      "name": "细心",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "在多项目并行操作中严格核对标本信息与条码一致性，对异常结果保持敏感",
+      "evidence_hints": "提及核对/复核/审核/质控/异常识别/标本信息核对"
+    },
+    {
+      "name": "责任心",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "对发出的每一份报告负责，遇到不确定的结果不侥幸放过、不推给下一班次",
+      "evidence_hints": "提及独立负责/独立值班/报告审核/溯源确认/不推诿"
+    },
+    {
+      "name": "积极主动",
+      "level": "优先",
+      "decision_mode": "preference",
+      "description": "不被动等待指令，主动发现流程中的效率瓶颈并提出改进建议",
+      "evidence_hints": "提及改进建议/流程优化/主动承担/额外职责/自学新项目"
+    }
+  ],
+  "retrieval_queries": [
+    "检验技术员",
+    "医学检验",
+    "检验科",
+    "检验"
+  ]
+}

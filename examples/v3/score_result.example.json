@@ -1,0 +1,94 @@
+{
+  "schema_version": "3.0",
+  "scoring_status": "SCORING_COMPLETE",
+  "candidate_id": "C-DEMO-001",
+  "job_id": "J-DEMO-001",
+  "errors": [],
+  "rq": {
+    "score": 90.0,
+    "raw_score": 90,
+    "rq1_stability": 50,
+    "rq1_label": "稳定",
+    "average_tenure_months": 31.5,
+    "rq2_continuity": 20,
+    "career_gap_months": 0,
+    "rq3_completeness": 20,
+    "missing_core_fields": 0,
+    "rq4_freshness_multiplier": 1.0,
+    "rq4_freshness_label": null
+  },
+  "jm": {
+    "score": 70.0,
+    "tag_details": [
+      {
+        "tag_id": "CAP-HA",
+        "name": "高可用架构与稳定性治理",
+        "category": "capability",
+        "weight": 0.4,
+        "evidence_level": "QUANTIFIED_CASE",
+        "ratio": 1.0,
+        "contribution": 40.0,
+        "confidence": 0.96,
+        "reasoning_summary": "有明确高可用实施行为和量化可用性结果",
+        "evidence": [
+          {
+            "text": "搭建Keepalived高可用方案并推动故障复盘机制，将核心服务月可用性提升至99.95%",
+            "source_path": "work_experience"
+          }
+        ]
+      },
+      {
+        "tag_id": "EXP-OPS",
+        "name": "生产运维与故障响应经验",
+        "category": "experience",
+        "weight": 0.4,
+        "evidence_level": "CASE",
+        "ratio": 0.6,
+        "contribution": 24.0,
+        "confidence": 0.94,
+        "reasoning_summary": "有明确生产运维与故障处理职责",
+        "evidence": [
+          {
+            "text": "负责生产环境Linux服务器、监控告警及故障处理",
+            "source_path": "work_experience"
+          }
+        ]
+      },
+      {
+        "tag_id": "TRA-OWN",
+        "name": "结果责任与闭环意识",
+        "category": "traits",
+        "weight": 0.2,
+        "evidence_level": "WEAK",
+        "ratio": 0.3,
+        "contribution": 6.0,
+        "confidence": 0.72,
+        "reasoning_summary": "有推进闭环的线索，但简历不足以证明稳定人格特质",
+        "evidence": [
+          {
+            "text": "推动故障复盘机制",
+            "source_path": "work_experience"
+          }
+        ]
+      }
+    ],
+    "multiplier": 1.0
+  },
+  "cs": 76.0,
+  "veto": false,
+  "veto_reasons": [],
+  "needs_verification": [
+    "REQ-LOC"
+  ],
+  "requirement_details": [
+    {
+      "requirement_id": "REQ-LOC",
+      "name": "能够接受目标城市现场办公",
+      "gate_type": "HARD_GATE",
+      "status": "UNKNOWN",
+      "reasoning_summary": "示例简历未说明是否接受目标城市现场办公，需要招聘沟通确认",
+      "evidence": []
+    }
+  ],
+  "recommendation_level": "STRONG_RECOMMEND"
+}
