@@ -55,7 +55,7 @@ def test_hiring_manager_skill_describes_candidate_decision_not_numeric_scoring()
 
 def test_readme_marks_old_scorers_as_legacy_non_active():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert text.startswith("# Recruiter-Na v5.0.2")
+    assert text.startswith("# Recruiter-Na\n")
     assert "Candidate Decision" in text
     assert "legacy" in text.lower()
     assert "screening_v5.py" in text

@@ -1,4 +1,4 @@
-# Recruiter-Na v5.0.2
+# Recruiter-Na
 
 Recruiter-Na is an open-source DingTalk recruitment assistant for hiring managers, built on Codex Harness.
 
