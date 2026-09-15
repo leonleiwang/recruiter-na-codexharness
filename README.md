@@ -1,5 +1,7 @@
 # Recruiter-Na
 
+English | [中文](README.zh.md)
+
 Recruiter-Na is an open-source DingTalk recruitment assistant for hiring managers, built on Codex Harness.
 
 It helps a hiring manager start or continue only their own hiring request, and view progress for only their own requests. For the currently supported inspection-technician policies, its screening path is `Resume Facts → LLM Semantic Evidence → Evidence Grounding → deterministic Candidate Decision`.
