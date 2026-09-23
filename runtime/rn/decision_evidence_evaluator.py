@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -228,6 +229,97 @@ RESUME_FACTS:
 """
 
 
+
+def _diagnose_consistency(event: str, **fields: Any) -> None:
+    """一致性双跑只做保守合并，出问题时必须留下运维可见的痕迹。"""
+    detail = " ".join(f"{k}={v}" for k, v in fields.items())
+    print(f"[decision] consistency_{event} {detail}".rstrip(), file=sys.stderr)
+
+
+def _merge_criterion_row(row: dict[str, Any], other: dict[str, Any]) -> bool:
+    """合并同一判据的两次结论；返回是否发生了不一致。
+
+    结论不同 -> unknown（既不否决也不算命中，进待核实）。
+    结论相同但证据强度不同 -> 保留结论，证据强度降到较弱一档（不再算命中标签）。
+    """
+    if (row.get("criterion_result"), row.get("evidence_status")) == (
+            other.get("criterion_result"), other.get("evidence_status")):
+        return False
+    both_none = str(row.get("evidence_status")) == "none" and str(other.get("evidence_status")) == "none"
+    both_confirmed = str(row.get("evidence_status")) == "confirmed" and str(other.get("evidence_status")) == "confirmed"
+    row["evidence_status"] = "none" if both_none else ("confirmed" if both_confirmed else "partial")
+    row["consistency_conflict"] = {"other_result": other.get("criterion_result"),
+                                   "other_evidence_status": other.get("evidence_status"),
+                                   "other_reasoning_summary": str(other.get("reasoning_summary") or "")}
+    if str(row.get("criterion_result")) == str(other.get("criterion_result")):
+        row["reasoning_summary"] = (str(row.get("reasoning_summary") or "")
+                                    + "（两次独立评估的证据强度不一致，按较弱证据处理）").strip()
+        return True
+    row["criterion_result"] = "unknown"
+    # 结论本身不确定时证据强度不得是 confirmed，否则读起来自相矛盾。
+    row["evidence_status"] = "none" if both_none else "partial"
+    if not row.get("evidence"):
+        row["evidence"] = list(other.get("evidence") or [])
+    row["reasoning_summary"] = (str(row.get("reasoning_summary") or "")
+                                + "（两次独立评估结论不一致，按待核实处理）").strip()
+    return True
+
+
+def merge_consistent_documents(criteria: dict[str, Any], first: dict[str, Any],
+                               second: dict[str, Any]) -> dict[str, Any]:
+    """合并同一份简历的两次独立语义评估。
+
+    模型对同一份简历会给出不同结论（实测约 7/106 人的最终决策在两次运行间翻转），
+    这种噪声会被确定性决策规则放大成误否决或误推荐。合并规则：两次一致才保留结论，
+    不一致一律退回 unknown（=待核实），既不否决、也不计入命中标签。
+    """
+    merged = json.loads(json.dumps(first))
+    disagreements: list[dict[str, Any]] = []
+
+    other_rows = {str(r.get("criterion_id") or ""): r for r in (second.get("criteria_assessments") or [])}
+    for row in merged.get("criteria_assessments") or []:
+        cid = str(row.get("criterion_id") or "")
+        other = other_rows.get(cid)
+        if not isinstance(other, dict):
+            continue
+        before = [row.get("criterion_result"), row.get("evidence_status")]
+        if _merge_criterion_row(row, other):
+            disagreements.append({"scope": "criterion", "id": cid, "first": before,
+                                  "second": [other.get("criterion_result"), other.get("evidence_status")],
+                                  "resolved": [row.get("criterion_result"), row.get("evidence_status")]})
+
+    hard_first = merged.get("hard_checks") or {}
+    hard_second = second.get("hard_checks") or {}
+    for key in ("education", "certification", "location"):
+        a = hard_first.get(key) or {}
+        b = hard_second.get(key) or {}
+        if not isinstance(a, dict) or not isinstance(b, dict) or not b:
+            continue
+        if str(a.get("status")) != str(b.get("status")):
+            disagreements.append({"scope": f"hard_check.{key}", "id": key, "first": a.get("status"),
+                                  "second": b.get("status"), "resolved": "unknown"})
+            a["status"] = "unknown"
+            a["reasoning_summary"] = (str(a.get("reasoning_summary") or "")
+                                      + "（两次独立评估结论不一致，按待核实处理）").strip()
+
+    red_second = {str(r.get("red_line_id") or ""): r for r in (second.get("red_line_assessments") or [])}
+    for row in merged.get("red_line_assessments") or []:
+        rid = str(row.get("red_line_id") or "")
+        other = red_second.get(rid)
+        if not isinstance(other, dict) or str(row.get("status")) == str(other.get("status")):
+            continue
+        disagreements.append({"scope": "red_line", "id": rid, "first": row.get("status"),
+                              "second": other.get("status"), "resolved": "unknown"})
+        row["status"] = "unknown"
+        row["reasoning_summary"] = (str(row.get("reasoning_summary") or "")
+                                    + "（两次独立评估结论不一致，按待核实处理）").strip()
+
+    merged["consistency"] = {"mode": "strict", "samples": 2,
+                             "disagreement_count": len(disagreements),
+                             "disagreements": disagreements}
+    return merged
+
+
 @dataclass
 class DecisionEvidenceEvaluator:
     base_url: str
@@ -238,6 +330,8 @@ class DecisionEvidenceEvaluator:
     max_resume_chars: int = 120_000
     api_mode: str = "responses"
     fallback_models: list[str] | None = None
+    # strict = 同一份简历跑两次独立语义评估，不一致的判据退回 unknown（待核实）。
+    consistency: str = "strict"
     max_attempts: int = 1
     max_models: int = 2
 
@@ -280,6 +374,7 @@ class DecisionEvidenceEvaluator:
             fallback_models=fallbacks or None,
             max_attempts=_env_int("RECRUITER_DECISION_MAX_ATTEMPTS", 1),
             max_models=_env_int("RECRUITER_DECISION_MAX_MODELS", 2),
+            consistency=("off" if os.environ.get("RECRUITER_DECISION_CONSISTENCY", "strict").strip().lower() in {"off", "false", "0"} else "strict"),
         )
 
     def _url(self) -> str:
@@ -332,15 +427,9 @@ class DecisionEvidenceEvaluator:
             raise EvidenceEvaluationError("LLM_INVALID_JSON", text[:500]) from exc
         return validate_decision_evidence_contract(criteria, resume_facts, doc)
 
-    def evaluate(self, criteria: dict[str, Any], resume_facts: dict[str, Any]) -> dict[str, Any]:
-        if not self.model.strip():
-            raise EvidenceEvaluationError("LLM_CONFIG_MISSING", "RECRUITER_LLM_MODEL is required")
-        if not self.api_key.strip():
-            raise EvidenceEvaluationError("LLM_CONFIG_MISSING", "semantic evaluator API key is required")
-        raw_text = str(resume_facts.get("raw_text") or "")
-        if len(raw_text) > self.max_resume_chars:
-            raise EvidenceEvaluationError("RESUME_TEXT_TOO_LARGE", f"raw_text has {len(raw_text)} chars; max={self.max_resume_chars}")
-        models = self.model_chain()
+    def _evaluate_chain(self, models: list[str], criteria: dict[str, Any],
+                        resume_facts: dict[str, Any]) -> dict[str, Any]:
+        """按模型链跑一遍语义评估：可重试错误换下一个模型。"""
         last: Exception | None = None
         for idx, model in enumerate(models):
             try:
@@ -352,3 +441,28 @@ class DecisionEvidenceEvaluator:
                     continue
                 raise
         raise EvidenceEvaluationError("LLM_REQUEST_FAILED", str(last)) from last
+
+    def evaluate(self, criteria: dict[str, Any], resume_facts: dict[str, Any]) -> dict[str, Any]:
+        if not self.model.strip():
+            raise EvidenceEvaluationError("LLM_CONFIG_MISSING", "RECRUITER_LLM_MODEL is required")
+        if not self.api_key.strip():
+            raise EvidenceEvaluationError("LLM_CONFIG_MISSING", "semantic evaluator API key is required")
+        raw_text = str(resume_facts.get("raw_text") or "")
+        if len(raw_text) > self.max_resume_chars:
+            raise EvidenceEvaluationError("RESUME_TEXT_TOO_LARGE", f"raw_text has {len(raw_text)} chars; max={self.max_resume_chars}")
+        models = self.model_chain()
+        first = self._evaluate_chain(models, criteria, resume_facts)
+        if self.consistency != "strict":
+            return first
+        try:
+            second = self._evaluate_chain(models, criteria, resume_facts)
+        except EvidenceEvaluationError as exc:
+            # 第二遍失败不能让整份候选人评估失败：单遍结果仍可用，但必须留下痕迹。
+            _diagnose_consistency("second_pass_failed", code=exc.code)
+            return first
+        merged = merge_consistent_documents(criteria, first, second)
+        consistency = merged.get("consistency") or {}
+        if consistency.get("disagreement_count"):
+            _diagnose_consistency("merged", candidate=str(resume_facts.get("candidate_id") or ""),
+                                  disagreements=consistency.get("disagreement_count"))
+        return validate_decision_evidence_contract(criteria, resume_facts, merged)
