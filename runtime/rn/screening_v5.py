@@ -44,17 +44,26 @@ def _profile_for_request(request: dict[str, Any], profile_repo: Any) -> Any | No
 
 def _recommendation_reasons(criteria: dict[str, Any], assessment: dict[str, Any], decision: dict[str, Any]) -> list[str]:
     out: list[str] = []
+    defs = {str(x.get("criterion_id") or ""): x for x in (criteria.get("criteria") or [])}
     for signal in decision.get("preference_signals") or []:
+        cid = str(signal.get("criterion_id") or "")
+        definition = defs.get(cid) or {}
+        # 特质项（抗压/细心/责任心/积极主动/持续学习）的结论只能在面试中确认，
+        # 不能作为"为什么推荐这个人"的理由进推荐依据；它仍然可能进面试重点。
+        if definition.get("dimension") == "trait":
+            continue
         text = str(signal.get("evidence") or signal.get("reason") or "").strip()
         label = str(signal.get("item") or "加分项")
         rendered = f"{label}：{text}" if text else label
         if rendered not in out:
             out.append(rendered)
-    defs = {str(x.get("criterion_id") or ""): x for x in (criteria.get("criteria") or [])}
     for row in assessment.get("criteria_assessments") or []:
         cid = str(row.get("criterion_id") or "")
         definition = defs.get(cid) or {}
-        if definition.get("decision_mode") != "resume_evidence":
+        # 推荐依据只能由简历能确凿支撑的能力/经历/资格给出：
+        # - trait 一律不进；
+        # - 非 resume_evidence（interview_verify/hard_gate）也不进。
+        if definition.get("dimension") == "trait" or definition.get("decision_mode") != "resume_evidence":
             continue
         if row.get("criterion_result") != "satisfied" or row.get("evidence_status") != "confirmed":
             continue
