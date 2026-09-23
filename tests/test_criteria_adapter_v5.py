@@ -62,6 +62,37 @@ def test_actual_criteria_uses_request_location_and_keeps_internal_decision_modes
     assert criteria["product_visibility"]["decision_mode"] == "internal_only"
 
 
+def test_experience_bar_follows_the_matched_profile_not_the_shared_policy():
+    """应届与社招共用一条 policy，但经历口径不同：
+    应届=实习即可/可培养（优先，不否决）；社招=≥1年（必须，明确不足即否决）。"""
+    freshgrad = build_actual_criteria(
+        _request(profile_id="PROFILE-91603AA55F6E"),
+        SimpleNamespace(profile_id="PROFILE-91603AA55F6E", name="检验技术员（应届）"),
+    )
+    social = build_actual_criteria(
+        _request(profile_id="PROFILE-412167F2937C"),
+        SimpleNamespace(profile_id="PROFILE-412167F2937C", name="检验技术员（社招）"),
+    )
+
+    fresh = next(r for r in freshgrad["criteria"] if r["name"] == "检验科经验")
+    experienced = next(r for r in social["criteria"] if r["name"] == "检验科经验")
+
+    assert (fresh["level"], fresh["decision_mode"]) == ("优先", "preference")
+    assert (experienced["level"], experienced["decision_mode"]) == ("必须", "resume_evidence")
+    assert "实习" in fresh["description"] and "≥1年" in experienced["description"]
+    assert fresh["source"] == "profile_override:PROFILE-91603AA55F6E"
+    assert [o["criterion_id"] for o in freshgrad["profile_criterion_overrides_applied"]] == ["C06"]
+    assert [o["criterion_id"] for o in social["profile_criterion_overrides_applied"]] == ["C06"]
+
+
+def test_unknown_profile_keeps_the_shared_policy_criteria():
+    criteria = build_actual_criteria(_request(profile_id=""), None)
+
+    assert criteria["profile_criterion_overrides_applied"] == []
+    row = next(r for r in criteria["criteria"] if r["name"] == "检验科经验")
+    assert (row["level"], row["decision_mode"]) == ("必须", "resume_evidence")
+
+
 def test_explicit_extra_must_haves_become_hard_gate_criteria():
     request = _request(extra_hard_requirements=["必须有罗氏免疫平台实操经验", "必须接受夜班"])
     criteria = build_actual_criteria(request)

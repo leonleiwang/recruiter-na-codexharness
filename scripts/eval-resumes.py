@@ -65,15 +65,28 @@ def read_document_text(path: Path) -> str:
     return ""
 
 
-def build_criteria() -> dict:
+def load_profile(profile_id: str):
+    """从画像库按 profile_id 取出画像对象（应届/社招口径不同）。"""
+    if not profile_id:
+        return None
+    from rn.repositories import ProfileRepository
+    repo = ProfileRepository()
+    profiles = list(repo.list_all()) if hasattr(repo, "list_all") else list(repo.all())
+    return next((p for p in profiles if str(getattr(p, "profile_id", "")) == profile_id), None)
+
+
+def build_criteria(profile_id: str = "") -> dict:
     request = {
         "request_id": "REQ-eval",
         "request": {
             "fields": {"position_title": "检验技术员", "location": "杭州"},
-            "profile_match": {"status": "MATCHED"},
+            "profile_match": {"status": "MATCHED", "profile_id": profile_id},
         },
     }
-    return build_actual_criteria(request, profile=None)
+    profile = load_profile(profile_id)
+    if profile_id and profile is None:
+        raise SystemExit("未找到画像: %s" % profile_id)
+    return build_actual_criteria(request, profile=profile)
 
 
 def evaluate_one(path: Path, criteria: dict, evaluator: DecisionEvidenceEvaluator) -> dict:
@@ -114,6 +127,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=4, help="并发评估数")
     ap.add_argument("--ext", default="pdf,docx", help="参与评估的扩展名")
+    ap.add_argument("--profile-id", default="", help="按画像口径评估（应届/社招判据不同）")
     args = ap.parse_args()
 
     # 业务标注 -> v5 决策词表：入职=pass，淘汰=fail
@@ -123,9 +137,13 @@ def main() -> int:
         name, want = pair.split("=", 1)
         truth[name.strip()] = LABEL_MAP.get(want.strip(), want.strip())
 
-    criteria = build_criteria()
+    criteria = build_criteria(args.profile_id)
     evaluator = DecisionEvidenceEvaluator.from_env()
+    c06 = next((c for c in criteria.get("criteria") or [] if c.get("name") == "检验科经验"), None)
     print("模型:", os.environ.get("RECRUITER_LLM_MODEL"), "| policy:", criteria.get("policy_id"))
+    print("口径: profile_id=%s | 检验科经验=%s/%s" % (
+        args.profile_id or "(policy 默认=社招)",
+        (c06 or {}).get("level"), (c06 or {}).get("decision_mode")))
 
     exts = {"." + e.strip().lower().lstrip(".") for e in args.ext.split(",") if e.strip()}
     files = sorted(p for p in Path(args.resume_dir).iterdir() if p.is_file() and p.suffix.lower() in exts)

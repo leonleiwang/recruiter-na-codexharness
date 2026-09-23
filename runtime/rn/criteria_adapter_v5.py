@@ -96,6 +96,26 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
             "source": "hiring_manager_delta",
         })
 
+    # 口径修正：policy 同时支持应届与社招两个画像，但两者的经历要求不同
+    # （应届=实习即可/可培养，社招=≥1年）。按匹配到的画像覆盖对应判据，
+    # 否则招应届时会拿社招标准成批否决应届生。
+    matched_profile_id = str(getattr(profile, "profile_id", "") or match.get("profile_id") or "").strip()
+    overrides = (policy.get("profile_criterion_overrides") or {}).get(matched_profile_id) or {}
+    applied_overrides: list[dict[str, Any]] = []
+    if overrides:
+        for row in criteria:
+            patch = overrides.get(str(row.get("name") or ""))
+            if not isinstance(patch, dict):
+                continue
+            for key in ("level", "decision_mode", "description", "evidence_hints"):
+                if key in patch:
+                    row[key] = patch[key]
+            row["source"] = f"profile_override:{matched_profile_id}"
+            if patch.get("override_reason"):
+                row["override_reason"] = patch["override_reason"]
+            applied_overrides.append({"criterion_id": row["criterion_id"], "name": row["name"],
+                                      "level": row.get("level"), "decision_mode": row.get("decision_mode")})
+
     hard_filters = deepcopy(policy.get("hard_filters") or {})
     hard_filters["location"] = location
     return {
@@ -117,6 +137,7 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
             "headcount": fields.get("headcount"),
             "urgency": fields.get("urgency") or "",
         },
+        "profile_criterion_overrides_applied": applied_overrides,
         "description": policy.get("description") or "",
         "biz_challenge": list(policy.get("biz_challenge") or []),
         "hard_filters": hard_filters,
