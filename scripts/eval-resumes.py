@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,10 +52,17 @@ from rn.decision_evidence_evaluator import DecisionEvidenceEvaluator  # noqa: E4
 from rn.job_contract_v3 import normalize_resume_facts  # noqa: E402
 
 
-def read_pdf(path: Path) -> str:
-    import fitz  # PyMuPDF
-    with fitz.open(path) as doc:
-        return "\n".join(page.get_text() for page in doc).strip()
+def read_document_text(path: Path) -> str:
+    """PDF 用 PyMuPDF；DOCX 用 python-docx；其它类型返回空（由调用方标记跳过）。"""
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        import fitz
+        with fitz.open(path) as doc:
+            return "\n".join(page.get_text() for page in doc).strip()
+    if suffix == ".docx":
+        import docx
+        return "\n".join(p.text for p in docx.Document(str(path)).paragraphs).strip()
+    return ""
 
 
 def build_criteria() -> dict:
@@ -69,7 +77,11 @@ def build_criteria() -> dict:
 
 
 def evaluate_one(path: Path, criteria: dict, evaluator: DecisionEvidenceEvaluator) -> dict:
-    facts = normalize_resume_facts({"candidate_id": path.stem, "name": path.stem, "raw_text": read_pdf(path)})
+    raw_text = read_document_text(path)
+    if len(raw_text) < 120:
+        return {"resume": path.stem, "decision": "SKIPPED_NO_TEXT", "chars": len(raw_text),
+                "reason": "无可解析文本层（可能是扫描件/图片简历），需要 OCR 才能评估"}
+    facts = normalize_resume_facts({"candidate_id": path.stem, "name": path.stem, "raw_text": raw_text})
     evidence = evaluator.evaluate(criteria, facts)
     decision = decide_candidate(criteria, evidence, facts)
     return {
@@ -100,6 +112,8 @@ def main() -> int:
     ap.add_argument("--truth", default="", help='形如 "邓嘉欣=淘汰,李静文=入职"')
     ap.add_argument("--json", default="")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=4, help="并发评估数")
+    ap.add_argument("--ext", default="pdf,docx", help="参与评估的扩展名")
     args = ap.parse_args()
 
     # 业务标注 -> v5 决策词表：入职=pass，淘汰=fail
@@ -113,33 +127,50 @@ def main() -> int:
     evaluator = DecisionEvidenceEvaluator.from_env()
     print("模型:", os.environ.get("RECRUITER_LLM_MODEL"), "| policy:", criteria.get("policy_id"))
 
-    files = sorted(Path(args.resume_dir).glob("*.pdf"))
+    exts = {"." + e.strip().lower().lstrip(".") for e in args.ext.split(",") if e.strip()}
+    files = sorted(p for p in Path(args.resume_dir).iterdir() if p.is_file() and p.suffix.lower() in exts)
     if args.limit:
         files = files[: args.limit]
     if not files:
         print("目录里没有 PDF:", args.resume_dir)
         return 2
 
-    results = []
-    for path in files:
-        try:
-            out = evaluate_one(path, criteria, evaluator)
-        except Exception as exc:  # 单份失败不影响整批
-            out = {"resume": path.stem, "decision": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
-        results.append(out)
-        want = truth.get(path.stem)
-        mark = ""
-        if want:
-            mark = " ✅与标注一致" if out.get("decision") == want else f" ❌标注={want}"
-        print("\n=== %s | 决策=%s%s" % (out["resume"], out.get("decision"), mark))
-        if out.get("error"):
-            print("    错误:", out["error"])
-            continue
-        print("    否决项:", out["veto_items"] or "无", "| 硬性失败:", out["fail_reasons"] or "无")
-        print("    待核实:", out["needs_verification"] or "无")
-        for c in out["criteria"]:
-            flag = "  <-- not_satisfied" if c["result"] == "not_satisfied" else ""
-            print("      %-6s %-16s %-10s %s%s" % (c["id"], c["result"], c["evidence_status"], c["mode"], flag))
+    results: list[dict] = []
+    verbose = len(files) <= 12
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        futures = {pool.submit(evaluate_one, path, criteria, evaluator): path for path in files}
+        for done, future in enumerate(as_completed(futures), 1):
+            path = futures[future]
+            try:
+                out = future.result()
+            except Exception as exc:  # 单份失败不影响整批
+                out = {"resume": path.stem, "decision": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+            out["file"] = path.name
+            results.append(out)
+            print("[%d/%d] %s -> %s" % (done, len(files), path.stem, out.get("decision")), flush=True)
+            if not verbose:
+                continue
+            want = truth.get(path.stem)
+            mark = ""
+            if want:
+                mark = " 与标注一致" if out.get("decision") == want else " 标注=%s" % want
+            print("   否决项:", out.get("veto_items") or "无", "| 待核实:", out.get("needs_verification") or "无", mark)
+            for c in out.get("criteria", []):
+                flag = "  <-- not_satisfied" if c["result"] == "not_satisfied" else ""
+                print("      %-6s %-16s %-10s%s" % (c["id"], c["result"], c["evidence_status"], flag))
+
+    tally: dict[str, int] = {}
+    for r in results:
+        tally[r.get("decision")] = tally.get(r.get("decision"), 0) + 1
+    print("\n=== 汇总 ===")
+    for k in sorted(tally, key=lambda x: -tally[x]):
+        print("  %-16s %d" % (k, tally[k]))
+    vetoed = [r for r in results if r.get("veto_items")]
+    if vetoed:
+        print("  被否决的候选人（%d 人）:" % len(vetoed))
+        for r in vetoed[:20]:
+            print("    %-30s 否决项=%s" % (r["resume"], ",".join(r["veto_items"])))
+    print("  文本不足而跳过:", tally.get("SKIPPED_NO_TEXT", 0), "| 评估失败:", tally.get("ERROR", 0))
 
     if args.json:
         target = Path(args.json)
