@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — DingTalk Reply Routing & Resume Delivery Fixes
+
+- Fixed the SELECTED takeover: a hiring manager's earlier selected request can no longer intercept every later message. Active requests keep priority, and resume/contact intents only apply when the message actually refers to the selected request. This restores field intake ("紧急") and stops unrelated replies from being read as contact consent.
+- Fixed ordinal selection ("选第N个") so it applies to the request that displayed the batch, instead of an older SELECTED request; the selection message is now the first-selection wording.
+- Stopped promising the enterprise cloud contact-center (Tencent CCC) call flow: selecting a candidate no longer asks about it, and an explicit contact request now states that the capability is not integrated yet and that no call or recording will be placed. See docs/reports/TENCENT_CCC_CONTACT_IMPLEMENTATION_HANDOFF_20260921.md.
+- Resume delivery now fails with an actionable reason (`RESUME_SOURCE_ROOTS_NOT_CONFIGURED`) when `RECRUITER_RESUME_SOURCE_ROOTS` is unset, instead of reporting only "not ready".
+- Added host diagnostics for intent-classifier failures and resume-delivery failures; the DingTalk bridge forwards child-process diagnostics to journalctl.
+- Documented `RECRUITER_RESUME_SOURCE_ROOTS`, `RECRUITER_RESUME_MAX_BYTES`, `RECRUITER_RESUME_URL_BASE`, `RECRUITER_RESUME_URL_DIR`, `DINGTALK_AI_CARD_TEMPLATE_ID`, `DINGTALK_PROGRESS_CARD`, and `DINGTALK_PROGRESS_THROTTLE_MS`; deployment scripts create `workspace/resume-url` and exclude `*.backup-*` from the release sync.
+- Moved stale `runtime/rn/*.backup-*` recovery copies out of the deploy path and refreshed the stale `/new` router expectation in `im/router-v34.test.mjs` (release verification gate).
+- Fixed duplicate hiring requests: the intent classifier now receives the pending intake fields (`当前待补字段`), and the prompt boundary states that supplying those field values continues the current draft even when the message reads like a full hiring description. Previously each field answer created a new request.
+- Stopped leaking backend errors to hiring managers: a screening backend failure (e.g. missing MySQL configuration) now keeps the request retryable at `JD_READY` with a safe message, while the real reason is logged as `[workflow] screening_failed request=… error=…`; the DingTalk bridge no longer appends `result.error` to the user reply.
+- Fixed duplicate DingTalk Stream consumers: starting a second local bridge while a stale instance stayed connected made DingTalk route robot messages to a dead connection, so the hiring manager saw the platform error card (`INTERNAL_UNKNOWN`). `scripts/start-local.sh` now refuses to start when an instance is already running, and `scripts/stop-local.sh` / `stop-local.cmd` stop every instance.
+- DingTalk inbound messages are no longer dropped silently: payload parse failures and unnormalizable messages (missing `senderStaffId`/`msgId`) are logged with a field-presence summary. `DINGTALK_STREAM_DEBUG=true` enables the SDK raw frame log for troubleshooting (off by default because frames contain the session webhook).
+
 ## 0.1.0 — Public Source Release
 
 - Published the Recruiter-Na v5.0.2 source, safe example configuration, deployment scripts, and verification suite under Apache-2.0.

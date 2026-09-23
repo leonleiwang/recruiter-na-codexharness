@@ -125,6 +125,10 @@ def evaluate_candidate_v5(
             "total_work_years": facts.get("total_work_years"),
             "location": facts.get("location"),
         }
+        # Internal source reference only: it lets the authorized selection flow
+        # retrieve the original file without exposing a path or identifier in
+        # the manager-facing response.
+        decision["source_resume_ref"] = str(resume.get("_mysql_uid") or resume.get("source_resume_ref") or "")
         decision["recommendation_reasons"] = _recommendation_reasons(actual, evidence, decision)
         timing["decision_ms"] = round((time.perf_counter() - t0) * 1000, 3)
 
@@ -159,7 +163,10 @@ class HiringDecisionScreeningService:
         self.jds = jd_repo
         self.evaluator = evaluator or DecisionEvidenceEvaluator.from_env()
         self.run_root = Path(run_root) if run_root is not None else ROOT / "workspace" / "runs"
-        self.pool_limit = int(pool_limit or os.environ.get("RECRUITER_SCREEN_POOL_LIMIT", "30"))
+        # Interactive screening must remain bounded even when the library grows.
+        # Retrieval chooses a small candidate pool; only that pool enters the
+        # expensive semantic-evidence queue for this turn.
+        self.pool_limit = int(pool_limit or os.environ.get("RECRUITER_SCREEN_POOL_LIMIT", "12"))
 
     def _pool(self, request: dict[str, Any], profile: Any | None) -> list[dict[str, Any]]:
         fields = (request.get("request") or {}).get("fields") or {}
@@ -219,7 +226,7 @@ class HiringDecisionScreeningService:
 
         decisions: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
-        workers = max(1, int(os.environ.get("RECRUITER_DECISION_WORKERS", "3")))
+        workers = max(1, int(os.environ.get("RECRUITER_DECISION_WORKERS", "4")))
 
         def one(index_resume: tuple[int, dict[str, Any]]) -> tuple[int, dict[str, Any] | None, dict[str, Any] | None, float]:
             idx, resume = index_resume
@@ -286,6 +293,9 @@ class HiringDecisionScreeningService:
                 "interview_focus": item.get("interview_focus") or [],
                 "preference_signals": item.get("preference_signals") or [],
                 "recommendation_reasons": item.get("recommendation_reasons") or [],
+                "source_resume_ref": item.get("source_resume_ref") or "",
+                "matched_tag_count": int(item.get("matched_tag_count") or 0),
+                "applicable_tag_count": int(item.get("applicable_tag_count") or 0),
                 "summary": item.get("candidate_summary") or {},
             })
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +24,19 @@ const venvPython = process.env.RECRUITER_PYTHON_BIN || path.join(root, '.venv', 
 const hostTool = path.join(root, 'runtime', 'rn', 'host_tool.py');
 const dedupeDir = process.env.RECRUITER_DEDUPE_DIR || path.join(root, 'workspace', '.im-dedupe');
 const dedupe = new FileDedupeStore({ dir: dedupeDir });
+const resumeUrlDir = process.env.RECRUITER_RESUME_URL_DIR || path.join(root, 'workspace', 'resume-url');
+const resumeUrlBase = String(process.env.RECRUITER_RESUME_URL_BASE || '').replace(/\/$/, '');
+
+function publishResumeFallback(filePath, filename) {
+  if (!resumeUrlBase) throw new Error('RECRUITER_RESUME_URL_BASE is required for URL fallback');
+  const extension = path.extname(String(filename || '')) || '.pdf';
+  const token = randomUUID().replace(/-/g, '');
+  const published = path.join(resumeUrlDir, `${token}${extension}`);
+  fs.mkdirSync(resumeUrlDir, { recursive: true, mode: 0o755 });
+  fs.copyFileSync(filePath, published);
+  fs.chmodSync(published, 0o644);
+  return `${resumeUrlBase}/${token}${extension}`;
+}
 
 const runtime = new CodexCliRuntime({
   bin: process.env.CODEX_BIN || 'codex',
@@ -76,7 +90,11 @@ function hostWorkflow(envelope, progress) {
     };
     const poller = setInterval(() => { void drain(); }, 500);
     child.stdout.on('data', d => { out += d; });
-    child.stderr.on('data', d => { err += d; });
+    child.stderr.on('data', d => {
+      err += d;
+      // 子进程的运维诊断必须进 journalctl；只留在 err 里等于线上无从判因。
+      process.stderr.write(d);
+    });
     child.on('close', async () => {
       clearInterval(poller);
       await drain();
@@ -137,9 +155,39 @@ await channel.start(async (envelope, responder) => {
     try {
       if (progress?.start) cardStarted = Boolean(await progress.start({ stage: 'HIRING_WORKFLOW', text: '正在处理你的招聘需求…' }));
       const result = await hostWorkflow(envelope, progress);
-      const text = result.message || (result.error ? `处理失败：${result.error}` : '已处理。');
+      if (result.error) {
+        // 内部错误只进 journalctl，不回给用人经理（避免泄露后端实现细节）。
+        console.error(`[workflow] msg=${mid} error=${result.error}`);
+      }
+      let text = result.message || (result.error ? '抱歉，这次没能完成处理，请稍后重试。' : '已处理。');
+      const followUpMessage = result.follow_up_message || '';
+      if (result.resume_delivery) {
+        let directDelivered = false;
+        try {
+          await responder.sendFile?.({ filePath: result.resume_delivery.file_path, filename: result.resume_delivery.filename });
+          directDelivered = true;
+        } catch (error) {
+          console.error(`[resume-delivery] failed msg=${mid}: ${error.message}`);
+        }
+        // Session-webhook success only means the API accepted the message; it
+        // does not prove the recipient sees an attachment.  Always hand back
+        // the scoped download URL so a selection is never falsely reported as
+        // delivered without an accessible original.
+        try {
+          const url = publishResumeFallback(result.resume_delivery.file_path, result.resume_delivery.filename);
+          text += directDelivered
+            ? ` 已提交钉钉文件投递；为确保可获取，简历原件下载链接：${url}`
+            : ` 钉钉文件未确认送达，简历原件下载链接：${url}`;
+        } catch (fallbackError) {
+          console.error(`[resume-delivery] URL fallback failed msg=${mid}: ${fallbackError.message}`);
+          text += directDelivered
+            ? ' 已提交钉钉文件投递。'
+            : ' 已选中该候选人，但简历暂未送达，请稍后重试。';
+        }
+      }
       if (cardStarted) await finishProgress(responder, progress, text);
       else await responder.reply?.(text);
+      if (followUpMessage) await responder.reply?.(followUpMessage);
       console.log(`[reply] source=hiring-workflow msg=${mid} state=${result.state || '-'} request=${result.request_id || '-'}`);
       return;
     } catch (error) {

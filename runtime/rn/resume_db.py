@@ -290,8 +290,10 @@ def parse_text_resume(text: str, resume_id: str | None = None, source: str = "up
             for junk in ("\u221a", "【", "】", "个人简历-", "简历-", "简历", "猎聘简历", "候选人-"):
                 stem = stem.replace(junk, "")
             import re as _re
-            parts = _re.split(r"[\s\-\u2014]+", stem)
-            for p in reversed(parts):
+            # Exported recruiter files commonly use ``姓名_岗位``. Treat that
+            # standalone prefix as a source label, never a title-derived name.
+            parts = _re.split(r"[\s_\-\u2014]+", stem)
+            for p in parts:
                 p = p.strip()
                 if _re.match(r"^[\u4e00-\u9fff\u3400-\u4dbf]{2,4}$", p) and not any(
                     kw in p for kw in ("简历","个人","医学","经理","专员","工程师","猎聘","经验","学历","博士","简历","职称","候选","年龄")):

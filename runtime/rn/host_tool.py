@@ -20,6 +20,7 @@ from rn.hiring_analyzer_v4 import HiringIntentAnalyzer
 from rn.hiring_requests import HiringRequestRepository
 from rn.hiring_workflow_v5 import HiringManagerWorkflow
 from rn.repositories import JDRepository, ProfileRepository, ResumeRepository
+from rn.resume_delivery import SelectedResumeDeliveryService
 from rn.screening_v5 import HiringDecisionScreeningService
 
 
@@ -73,6 +74,7 @@ def _workflow_handle(argv: list[str]) -> dict[str, Any]:
         jd_repo=jd_repo,
         resume_repo=resume_repo,
         analyzer=HiringIntentAnalyzer.from_env(),
+        delivery_service=SelectedResumeDeliveryService(resume_repo),
         screening_service=HiringDecisionScreeningService(
             resume_repo=resume_repo,
             profile_repo=profile_repo,

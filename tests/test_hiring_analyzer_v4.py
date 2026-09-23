@@ -12,4 +12,5 @@ def test_missing_llm_config_never_keyword_matches_profile():
     result = analyzer.analyze_initial("我要招一个医学联络官，杭州，1人", [P()])
     assert result["profile_match"]["status"] == "UNAVAILABLE"
     assert result["profile_match"]["profile_id"] == ""
-    assert result["fields"]["position_title"] == "医学联络官"
+    assert result["fields"] == {}
+    assert result["provided_fields"] == []

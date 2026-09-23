@@ -130,6 +130,8 @@ def test_service_evaluates_full_pool_orders_passes_and_isolates_rejections_and_t
     assert [x["candidate_id"] for x in result["recommendations"]] == ["C2", "C1", "C3"]
     assert result["recommendations"][0]["recommendation_order"] == 1
     assert result["recommendations"][2]["readiness"] == "needs_verification"
+    assert result["recommendations"][0]["applicable_tag_count"] == 15
+    assert result["recommendations"][0]["matched_tag_count"] == 6
     assert [x["candidate_id"] for x in result["rejected_candidates"]] == ["C4"]
     assert [x["candidate_id"] for x in result["failures"]] == ["C5"]
     assert "score" not in json.dumps(result["recommendations"], ensure_ascii=False).lower()
@@ -137,6 +139,17 @@ def test_service_evaluates_full_pool_orders_passes_and_isolates_rejections_and_t
     assert (run_dir / "decision_policy.json").exists()
     assert (run_dir / "actual_criteria.json").exists()
     assert (run_dir / "decision_snapshot.json").exists()
+
+
+def test_default_interactive_pool_is_bounded_for_large_resume_libraries(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("RECRUITER_SCREEN_POOL_LIMIT", raising=False)
+    monkeypatch.delenv("RECRUITER_DECISION_WORKERS", raising=False)
+    service = HiringDecisionScreeningService(
+        resume_repo=FakeResumeRepo(50), profile_repo=FakeProfileRepo(), jd_repo=object(), evaluator=FakeEvaluator(),
+        run_root=tmp_path,
+    )
+
+    assert service.pool_limit == 12
 
 
 

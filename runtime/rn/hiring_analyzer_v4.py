@@ -1,14 +1,12 @@
 """Semantic requirement intake and standard-profile matching for hiring managers.
 
-Profile selection is always LLM-semantic. Deterministic parsing is allowed only
-for literal request fields (for example, an explicit headcount or salary); it
-never decides that a standard profile matches.
+Profile selection and request-field extraction are performed by the configured
+LLM.  This module deliberately has no keyword or regular-expression fallback.
 """
 from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,31 +31,6 @@ def _json_from_text(text: str) -> dict[str, Any]:
     if not isinstance(doc, dict):
         raise HiringAnalysisError("HIRING_ANALYZER_INVALID_CONTRACT")
     return doc
-
-
-def _minimal_literal_fields(text: str) -> tuple[dict[str, Any], list[str]]:
-    """Extract only literal fields. This must never infer profile membership."""
-    t = str(text or "")
-    fields: dict[str, Any] = {}
-    provided: list[str] = []
-    m = re.search(r"(?:招一个|招个|招聘一个|招聘|需要一个|要一个)\s*([^，,。；;！？!?]{2,24})", t)
-    if m:
-        title = m.group(1).strip()
-        title = re.sub(r"(?:，|,).*", "", title)
-        fields["position_title"] = title
-        provided.append("position_title")
-    m = re.search(r"(?:HC|hc|人数|招)\s*[:：]?\s*(\d+)\s*(?:人|个)?", t)
-    if m:
-        fields["headcount"] = int(m.group(1)); provided.append("headcount")
-    m = re.search(r"(\d+(?:\.\d+)?\s*[-~—至]\s*\d+(?:\.\d+)?\s*[KkWw万]?)", t)
-    if m:
-        fields["salary_range"] = m.group(1).strip(); provided.append("salary_range")
-    for city in ("杭州", "上海", "南京", "北京", "广州", "深圳", "苏州", "沈阳", "武汉", "成都"):
-        if city in t:
-            fields["location"] = city; provided.append("location"); break
-    if any(x in t for x in ("尽快", "紧急", "急招")):
-        fields["urgency"] = "尽快"; provided.append("urgency")
-    return fields, provided
 
 
 def _profile_catalog(profiles: list[Any]) -> list[dict[str, Any]]:
@@ -123,7 +96,8 @@ class HiringIntentAnalyzer:
 2. 只有高度明确属于一个画像时 MATCHED；两者接近且缺关键区分信息时 AMBIGUOUS；不属于任何画像时 NO_MATCH。
 3. 不得创造用户没有提供的招聘专属事实。标准画像只用于 profile_match，不要把画像内容写进 fields。
 4. fields 只抽取用户明确提供的信息。provided_fields 只列用户明确给出的字段，即使用户明确说“没有额外硬要求”，也应列出 extra_hard_requirements 且值为 []。
-5. 输出 JSON 之外不要输出文字。
+5. 用户对工作经验层级、培养方式、岗位职责或技术方向的自然语言说明，都是画像区分依据。若这些说明已经能在候选画像中唯一确定一个，必须输出 MATCHED，不能再提出澄清问题或因为没有固定措辞而输出 AMBIGUOUS。
+6. 输出 JSON 之外不要输出文字。
 
 fields 可用字段：position_title, department, headcount, location, work_mode, salary_range, urgency, employment_type, extra_hard_requirements, core_responsibilities, hard_requirements, key_experience_skills, bonus_points。
 列表字段：extra_hard_requirements, core_responsibilities, hard_requirements, key_experience_skills, bonus_points。
@@ -154,10 +128,9 @@ USER_REQUEST:
                 raise HiringAnalysisError("HIRING_ANALYZER_PROFILE_STATUS_INVALID")
             return result
         except HiringAnalysisError:
-            fields, provided = _minimal_literal_fields(text)
             return {
-                "fields": fields,
-                "provided_fields": provided,
+                "fields": {},
+                "provided_fields": [],
                 "profile_match": {
                     "status": "UNAVAILABLE",
                     "profile_id": "",
@@ -181,9 +154,4 @@ USER_REQUEST:
             result = self._call(prompt)
             return {"fields": result.get("fields") or {}, "provided_fields": result.get("provided_fields") or []}
         except HiringAnalysisError:
-            # Conservative fallback: literal parser only. It does not infer missing semantic fields.
-            fields, provided = _minimal_literal_fields(text)
-            if len(missing_fields) == 1 and str(text).strip() in {"没有", "无", "没有了", "无额外要求", "没有额外要求"}:
-                fields[missing_fields[0]] = []
-                provided.append(missing_fields[0])
-            return {"fields": fields, "provided_fields": provided}
+            return {"fields": {}, "provided_fields": []}

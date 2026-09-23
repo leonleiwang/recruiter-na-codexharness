@@ -47,3 +47,6 @@ docs/legacy-v3-requisitions/
 # Local recovery copies and presentation artifacts may contain historical data.
 *.backup-*
 templates/简历推送报告.html
+
+# Local scratch space (diagnostics, extracted archives, uploads).
+/tmp/

@@ -103,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("ingest", help="入库文件或目录（不生成候选人分数）")
     sp.add_argument("target")
     sp.add_argument("--source", default="upload")
+    sp.add_argument("--original-root", default=None, help="MySQL 原件所在受控根目录；生产入库必须指定")
 
     sp = sub.add_parser("search", help="只读检索候选；仅用于检索，不决定通过/不通过")
     sp.add_argument("--dev-dir", default=None)
@@ -142,10 +143,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "ingest":
         from rn.mail_watch import _extract_docx_or_pdf
         target = Path(args.target)
-        files = sorted(target.iterdir()) if target.is_dir() else [target]
+        files = (
+            sorted(
+                (x for x in target.rglob("*") if x.is_file() and "__MACOSX" not in x.parts and not x.name.startswith("._")),
+                key=lambda x: str(x),
+            )
+            if target.is_dir() else [target]
+        )
         count = 0
+        skipped = 0
         for f in files:
             if not f.is_file() or f.suffix.lower() not in (".txt", ".md", ".pdf", ".docx"):
+                continue
+            if args.backend == "mysql":
+                if not args.original_root:
+                    raise RuntimeError("MYSQL_INGEST_REQUIRES_ORIGINAL_ROOT")
+                try:
+                    outcome = store.ingest_original(f, source_root=args.original_root, fetched_by=args.source)
+                except ValueError as exc:
+                    print(f"skip {exc}: {f.name}", file=sys.stderr)
+                    skipped += 1
+                    continue
+                print(f"{outcome['status']} {outcome['id']} {outcome['filename']}")
+                count += 1
                 continue
             data = f.read_bytes()
             text = data.decode("utf-8", errors="replace") if f.suffix.lower() in (".txt", ".md") else _extract_docx_or_pdf(f)
@@ -157,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
             store.upsert(resume)
             print(f"ingested {resume['resume_id']} {resume.get('name', '')}")
             count += 1
-        print(f"done: {count}")
+        print(f"done: {count}; skipped: {skipped}")
         return 0
 
     if args.cmd == "search":

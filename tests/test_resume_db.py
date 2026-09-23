@@ -37,6 +37,12 @@ def test_ingest_dedupe(tmp_path):
     assert store.stats()["total"] == 1
 
 
+def test_parse_text_resume_uses_a_filename_prefix_as_candidate_name():
+    resume = parse_text_resume("医学检验技术\n检验科工作经历", meta={"filename": "李静文_驻点检验技术员.pdf"})
+
+    assert resume["name"] == "李静文"
+
+
 def test_review_required_without_routing(tmp_path):
     store = JsonResumeStore(tmp_path / "db.json")
     inbox = tmp_path / "inbox"

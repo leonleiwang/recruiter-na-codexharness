@@ -99,7 +99,7 @@ rm -f /run/recruiter-na/data-gateway.sock 2>/dev/null || true
 
 mkdir -p "$APP"
 rsync -a --delete \
-  --exclude '.venv' --exclude 'node_modules' --exclude '.env' \
+  --exclude '.venv' --exclude 'node_modules' --exclude '.env' --exclude '*.backup-*' --exclude '__pycache__' --exclude '.pytest_cache' \
   --exclude 'data/source/resumes/private' --exclude 'data/quarantine' \
   --exclude 'workspace/runs' --exclude 'workspace/reports' \
   --exclude 'workspace/hiring_manager_requests.sqlite3*' \
@@ -111,7 +111,7 @@ if [[ ! -x "$APP/.venv/bin/python" ]]; then python3 -m venv "$APP/.venv"; fi
 (cd "$APP/vendor/codexharness-im" && npm install --omit=dev)
 
 cp "$APP/deploy/recruiter-na.service" /etc/systemd/system/recruiter-na.service
-mkdir -p "$APP/workspace/runs" "$APP/workspace/reports" "$APP/workspace/.host-progress"
+mkdir -p "$APP/workspace/runs" "$APP/workspace/reports" "$APP/workspace/.host-progress" "$APP/workspace/resume-url"
 rm -f "$APP/workspace/resume_db.json" "$APP/workspace/resume_db.example.json"
 chown -R recruiter-na:recruiter-na /opt/recruiter-na
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import hashlib
 from pathlib import Path
 from typing import Any, Optional
 
@@ -250,16 +251,20 @@ class ResumeMySQLBackend(ResumeBackend):
             pass
 
         # ===== 拼接 raw_text（评分引擎做标签匹配） =====
-        raw_text = " ".join(filter(None, [
+        legacy_raw_text = " ".join(filter(None, [
             row.get("cont_basic_info") or "",
             row.get("cont_education") or "",
             row.get("cont_job_exp") or "",
             row.get("cont_job_skill") or "",
             row.get("cont_proj_exp") or "",
-            row.get("resume_name") or "",
         ]))
-        if not raw_text.strip():
-            raw_text = row.get("raw_text") or ""
+        stored_raw_text = str(row.get("raw_text") or "").strip()
+        if stored_raw_text and (not legacy_raw_text.strip() or len(stored_raw_text) >= len(legacy_raw_text.strip())):
+            raw_text = stored_raw_text
+        elif legacy_raw_text.strip():
+            raw_text = legacy_raw_text
+        else:
+            raw_text = row.get("resume_name") or ""
 
         # ===== 简历ID =====
         rid = "MYSQL-" + sha256_of_text(name + phone + current_company + current_position)[:12]
@@ -354,6 +359,26 @@ class ResumeMySQLBackend(ResumeBackend):
             "_mysql_raw_json": row.get("raw_json"),
             "_mysql_info": {k: str(v) if hasattr(v, "isoformat") else v for k, v in (info or {}).items()} if info else None,  # candidate_info 完整记录
         }
+        # Recruiter-Na imports retain their normalized facts in raw_json.  The
+        # legacy columns above are populated by Alibaba/MinerU pipelines and
+        # may be empty for a local-original import; never let a filename win
+        # over the imported resume facts in that case.
+        try:
+            import_doc = json.loads(row.get("raw_json") or "{}")
+            imported = import_doc.get("normalized_resume") if isinstance(import_doc, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            imported = None
+        if isinstance(imported, dict):
+            for key in (
+                "education", "location", "expected_location", "total_work_years", "industry_tags",
+                "certifications", "skills", "expected_salary", "current_company", "current_position",
+                "work_experiences", "projects", "routing", "status",
+            ):
+                if key in imported:
+                    result[key] = imported[key]
+            result["resume_id"] = str(imported.get("resume_id") or result["resume_id"])
+            result["name"] = str(imported.get("name") or result["name"] or "未命名")
+            result["raw_text"] = str(row.get("raw_text") or imported.get("raw_text") or "")
         return result
 
     def _get_info_by_phone(self, phone=""):
@@ -452,6 +477,80 @@ class ResumeMySQLBackend(ResumeBackend):
         except Exception as e:
             print(f"[警告] MySQL 缓存写入失败: {e}")
         return resume
+
+    def ingest_original(self, path: str | Path, *, source_root: str | Path, fetched_by: str = "recruiter-na-import") -> dict[str, Any]:
+        """Insert one locally retained original into the production resume authority.
+
+        This is deliberately separate from ``upsert``: the historic backend is
+        read-only for generic normalized records, while an imported original
+        needs an auditable source path, content digest, and parsed text in the
+        same MySQL row that the delivery flow later resolves.
+        """
+        from rn.mail_watch import _extract_docx_or_pdf
+        from rn.resume_db import parse_text_resume
+
+        source = Path(path).resolve()
+        root = Path(source_root).resolve()
+        if not source.is_file() or not source.is_relative_to(root):
+            raise ValueError("IMPORT_SOURCE_OUTSIDE_ROOT")
+        if source.suffix.lower() not in {".pdf", ".docx"}:
+            raise ValueError("IMPORT_UNSUPPORTED_FORMAT")
+        blob = source.read_bytes()
+        digest = hashlib.sha256(blob).hexdigest()
+        text = _extract_docx_or_pdf(source)
+        if not text or text.startswith("[DOC_PARSE_PENDING]") or len(text.strip()) < 20:
+            raise ValueError("IMPORT_TEXT_UNAVAILABLE")
+
+        parsed = parse_text_resume(
+            text, resume_id="R-" + digest[:10], source="uploaded_original",
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%S"), meta={"filename": source.name},
+        )
+        # The existing production schema has short display/lookup columns.
+        # Extraction is allowed to be noisy; retain the authoritative resume
+        # body for evidence and clamp only denormalized convenience fields.
+        def clipped(value: Any, limit: int) -> str:
+            return str(value or "").strip()[:limit]
+
+        stored_text = text[:16_000]
+        conn = self._connect()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"SELECT id FROM {self.table_resume} "
+                "WHERE JSON_UNQUOTE(JSON_EXTRACT(raw_json, '$.recruiter_na_import.sha256')) = %s LIMIT 1",
+                (digest,),
+            )
+            existing = cur.fetchone()
+            if existing:
+                return {"status": "duplicate", "id": int(existing["id"]), "sha256": digest, "filename": source.name}
+
+            education = parsed.get("education") or {}
+            payload = {
+                "recruiter_na_import": {
+                    "sha256": digest, "source": "uploaded_original", "filename": source.name,
+                    "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+                "normalized_resume": parsed,
+            }
+            cur.execute(
+                f"INSERT INTO {self.table_resume} "
+                "(name, degree, major, work_year, work_company, work_position, resume_name, raw_text, source_file_path, fetched_by, raw_json) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    clipped(parsed.get("name"), 64), clipped(education.get("level"), 32), clipped(education.get("major"), 128),
+                    clipped(parsed.get("total_work_years"), 16), clipped(parsed.get("current_company"), 256),
+                    clipped(parsed.get("current_position"), 128), clipped(source.name, 256), stored_text, str(source), clipped(fetched_by, 64),
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+            inserted = int(cur.lastrowid)
+            conn.commit()
+            return {"status": "inserted", "id": inserted, "sha256": digest, "filename": source.name}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
     def stats(self):
         conn = self._connect()

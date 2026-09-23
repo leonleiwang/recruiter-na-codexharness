@@ -80,6 +80,8 @@ class ResumeRepository:
             raise RuntimeError("PRODUCTION_JSON_RESUME_DB_FORBIDDEN")
         try:
             be = self._get_mysql()
+            if str(identifier).strip().isdigit():
+                return be.get(str(identifier).strip())
             results = be.search(query=identifier, limit=1)
             return results[0] if results else None
         except Exception as exc:

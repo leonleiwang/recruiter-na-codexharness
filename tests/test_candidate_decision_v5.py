@@ -95,3 +95,27 @@ def test_recommendation_order_is_grouped_without_exposed_score():
     )
     assert [x[0] for x in ordered] == ["C", "A", "B", "D"]
     assert all("score" not in key for key in ready_two_prefs)
+
+
+def test_matched_tag_count_uses_all_active_policy_labels_without_affecting_decision():
+    criteria = {
+        **CRITERIA,
+        "criteria": [
+            *CRITERIA["criteria"],
+            {"criterion_id": "C05", "name": "标签五", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C06", "name": "标签六", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C07", "name": "标签七", "decision_mode": "resume_evidence"},
+        ],
+    }
+    doc = assessment(c3="satisfied", c4="satisfied")
+    doc["criteria_assessments"].extend([
+        {"criterion_id": "C05", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "五", "source_path": "raw_text"}]},
+        {"criterion_id": "C06", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "六", "source_path": "raw_text"}]},
+        {"criterion_id": "C07", "criterion_result": "unknown", "evidence_status": "none", "evidence": []},
+    ])
+
+    result = decide_candidate(criteria, doc)
+
+    assert result["matched_tag_count"] == 9
+    assert result["applicable_tag_count"] == 10
+    assert result["decision"] == "pass"
