@@ -13,7 +13,7 @@ CRITERIA = {
 }
 
 
-def assessment(*, education="matched", certification="valid", location="match", red="clear", c1="satisfied", c2="satisfied", c3="unknown", c4="unknown"):
+def assessment(*, education="matched", certification="valid", location="match", red="clear", c1="satisfied", c2="satisfied", c2_status=None, c3="unknown", c4="unknown"):
     def row(cid, result, evidence_status=None):
         if evidence_status is None:
             evidence_status = "confirmed" if result in {"satisfied", "not_satisfied"} else "none"
@@ -34,7 +34,7 @@ def assessment(*, education="matched", certification="valid", location="match", 
             "location": {"status": location, "evidence": [], "reasoning_summary": location},
         },
         "red_line_assessments": [{"red_line_id": "RL01", "status": red, "evidence": [], "reasoning_summary": red}],
-        "criteria_assessments": [row("C01", c1), row("C02", c2), row("C03", c3), row("C04", c4)],
+        "criteria_assessments": [row("C01", c1), row("C02", c2, c2_status), row("C03", c3), row("C04", c4)],
     }
 
 
@@ -61,8 +61,26 @@ def test_hard_gate_not_satisfied_vetoes_but_unknown_only_verifies():
     assert any(x["item"] == "必须罗氏平台经验" for x in unknown["needs_verification"])
 
 
-def test_resume_evidence_not_satisfied_is_verification_not_veto():
-    result = decide_candidate(CRITERIA, assessment(c2="not_satisfied"))
+def test_resume_evidence_confirmed_not_satisfied_vetoes_a_required_criterion():
+    """业务标注要求：必须项若被简历明确证伪，必须否决（v5 曾漏判此类候选人）。"""
+    result = decide_candidate(CRITERIA, assessment(c2="not_satisfied", c2_status="confirmed"))
+
+    assert result["decision"] == "fail"
+    assert any(v["rule"] == "resume_evidence_confirmed_not_satisfied" for v in result["veto_items"])
+
+
+def test_resume_evidence_not_satisfied_without_confirmed_evidence_only_verifies():
+    """证据不完整（partial）时不得否决，只能进待核实，避免误杀。"""
+    result = decide_candidate(CRITERIA, assessment(c2="not_satisfied", c2_status="partial"))
+
+    assert result["decision"] == "pass"
+    assert not result["veto_items"]
+    assert any(x["item"] == "检验科经验" for x in result["needs_verification"])
+
+
+def test_resume_evidence_unknown_still_only_verifies():
+    result = decide_candidate(CRITERIA, assessment(c2="unknown"))
+
     assert result["decision"] == "pass"
     assert not result["veto_items"]
     assert any(x["item"] == "检验科经验" for x in result["needs_verification"])

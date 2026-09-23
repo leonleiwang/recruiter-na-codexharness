@@ -98,6 +98,9 @@ def validate_decision_evidence_contract(criteria: dict[str, Any], resume_facts: 
     if str(doc.get("policy_id") or "") != str(criteria.get("policy_id") or ""):
         raise EvidenceEvaluationError("LLM_CONTRACT_ID_MISMATCH", "policy_id mismatch")
 
+    # 契约修复记录：无逐字证据的"确定性结论"一律降级，绝不让整份候选人评估失败。
+    repairs: list[dict[str, Any]] = []
+
     hard_checks = doc.get("hard_checks")
     if not isinstance(hard_checks, dict):
         raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", "hard_checks must be an object")
@@ -109,7 +112,8 @@ def validate_decision_evidence_contract(criteria: dict[str, Any], resume_facts: 
         status = row["status"]
         definitive = status != "unknown"
         if definitive and not evidence:
-            raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", f"{name} {status} requires evidence")
+            repairs.append({"scope": f"hard_check:{name}", "from": status, "repair": "downgraded_to_unknown"})
+            row["status"] = "unknown"
         row["evidence"] = evidence
 
     expected_red_lines = list((criteria.get("hard_filters") or {}).get("red_lines") or [])
@@ -125,8 +129,14 @@ def validate_decision_evidence_contract(criteria: dict[str, Any], resume_facts: 
         seen_red.append(rid)
         evidence = _evidence_list(row.get("evidence") or [])
         if row.get("status") == "hit" and not evidence:
-            raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", f"{rid} hit requires evidence")
+            repairs.append({"scope": rid, "from": "hit", "repair": "downgraded_to_unknown"})
+            row["status"] = "unknown"
         row["evidence"] = evidence
+    if sorted(seen_red) == sorted(expected_red_ids) and seen_red != expected_red_ids:
+        order = {rid: i for i, rid in enumerate(expected_red_ids)}
+        doc["red_line_assessments"] = sorted(red_rows, key=lambda r: order[str(r.get("red_line_id") or "")])
+        repairs.append({"scope": "red_line_assessments", "repair": "reordered"})
+        seen_red = list(expected_red_ids)
     if seen_red != expected_red_ids:
         raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", "red line ids mismatch")
 
@@ -146,12 +156,22 @@ def validate_decision_evidence_contract(criteria: dict[str, Any], resume_facts: 
             raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", f"invalid evidence_status for {cid}")
         evidence = _evidence_list(row.get("evidence") or [])
         if row["criterion_result"] in {"satisfied", "not_satisfied"} and not evidence:
-            raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", f"{cid} definitive result requires evidence")
-        if row["evidence_status"] == "none" and evidence:
-            raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", f"{cid} evidence_status none cannot contain evidence")
+            repairs.append({"scope": cid, "from": row["criterion_result"], "repair": "downgraded_to_unknown"})
+            row["criterion_result"] = "unknown"
+            row["evidence_status"] = "none"
+        elif row["evidence_status"] == "none" and evidence:
+            repairs.append({"scope": cid, "from": "none_with_evidence", "repair": "upgraded_to_partial"})
+            row["evidence_status"] = "partial"
         row["evidence"] = evidence
+    if sorted(seen) == sorted(expected) and seen != expected:
+        order = {cid: i for i, cid in enumerate(expected)}
+        doc["criteria_assessments"] = sorted(rows, key=lambda r: order[str(r.get("criterion_id") or "")])
+        repairs.append({"scope": "criteria_assessments", "repair": "reordered"})
+        seen = list(expected)
     if seen != expected:
         raise EvidenceEvaluationError("LLM_CONTRACT_INVALID", "criterion ids/order mismatch")
+    if repairs:
+        doc["contract_repairs"] = repairs
     return doc
 
 
@@ -278,9 +298,10 @@ class DecisionEvidenceEvaluator:
 
     def _payload(self, model: str, criteria: dict[str, Any], resume_facts: dict[str, Any]) -> dict[str, Any]:
         prompt = _build_prompt(criteria, resume_facts)
+        # temperature=0：同一份简历必须得到同样的判据结论，否则决策规则会被采样噪声放大。
         if self.api_mode == "chat":
-            return {"model": model, "messages": [{"role": "user", "content": prompt}]}
-        return {"model": model, "input": prompt}
+            return {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0}
+        return {"model": model, "input": prompt, "temperature": 0}
 
     def _evaluate_model(self, model: str, criteria: dict[str, Any], resume_facts: dict[str, Any]) -> dict[str, Any]:
         if self.post_json is _default_decision_post_json:

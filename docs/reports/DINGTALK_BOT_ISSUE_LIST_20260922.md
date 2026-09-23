@@ -29,6 +29,7 @@
 | ISSUE-015 | 机器人被两个消费者抢占（DSH dsh-im 与独立桥接） | 高 | **已修复**（改为由 v5 桥接独占，v2.2 已整体删除） |
 | ISSUE-016 | 钉钉回复整条乱码（Python stdout 按 GBK 编码被当作 UTF-8 解码） | 高 | **已修复（代码+部署配置）**，已在钉钉消息库验证 |
 | ISSUE-017 | markdown 形态的钉钉消息正文被判为空，掉进 Codex 兜底报 ENOENT | 高 | **已修复（适配器）**，markdown 形态复测通过 |
+| ISSUE-018 | 简历评估：必须项被明确证伪却不否决 / 结论随机 / 无证据结论直接抛错 | 高 | **已修复（代码）**，带标注样本 3/3 一致且两次运行稳定 |
 
 ### 修复摘要（2026-09-23）
 
@@ -575,6 +576,62 @@ text:   当前需求可能对应多个标准岗位画像，为避免误套画像
 ### 验证
 
 markdown 形态消息复测：`[reply] source=hiring-workflow state=DRAFT`（修复前是 `spawn codex ENOENT`）。
+
+---
+
+## ISSUE-018 简历评估的三处缺陷（推荐正确性）
+
+**严重级别：** 高 ｜ **状态：** 已修复；带业务标注的样本 3/3 一致，连续两次运行结果完全相同
+
+### 背景
+
+用人部门只关心一件事：**推给他的人是否正确**。用带业务标注的样本（入职/淘汰）做回归时暴露出三个缺陷。
+回归工具：`scripts/eval-resumes.py`（不依赖 MySQL：PDF → 简历事实 → 语义证据 → 确定性决策）。
+
+### 缺陷 1：必须项被简历明确证伪，却不否决（漏判）
+
+`candidate_decision_v5.py` 对 `decision_mode=resume_evidence` 的处理是：
+`not_satisfied` 与 `unknown` 一律只进 `needs_verification`，从不否决。
+于是"简历已明确证明不满足必须条件"的候选人照样被推荐。
+
+实测：邓嘉欣（业务标注=淘汰）——C06 检验科经验 `not_satisfied/confirmed`（简历仅 7 个月实习 + 4 个月），决策却是 `pass`。
+
+**修复：** `level=必须` 且 `resume_evidence`，当 `criterion_result=not_satisfied` 且 `evidence_status=confirmed` 时进入否决
+（`rule=resume_evidence_confirmed_not_satisfied`）；`unknown` 与 `partial` 仍只进待核实，避免误杀。
+
+### 缺陷 2：评估结论随机（同一份简历两次不同）
+
+`decision_evidence_evaluator._payload()` 构造请求时**没有设置 `temperature`**，DeepSeek 用默认采样温度，
+同一份简历两次运行 C06 分别得到 `satisfied/confirmed` 与 `not_satisfied/confirmed`——决策规则会被这种噪声放大成误杀。
+
+**修复：** chat 与 responses 两种模式都固定 `temperature=0`。
+
+### 缺陷 3：无逐字证据的"确定性结论"直接抛错，候选人静默消失
+
+`validate_decision_evidence_contract()` 对"结论是 satisfied/not_satisfied 但没有逐字证据"直接抛
+`EvidenceEvaluationError`，整份候选人评估失败。实测李静文即因此报错（`C08 definitive result requires evidence`），
+在生产里会表现为技术失败、候选人凭空消失，而不是被降级处理。这与 v5.0.1 热修文档"应当降级、不能让单条坏引用崩掉整份评估"相矛盾。
+
+**修复：** 契约违例一律降级并留痕（写入 `contract_repairs`）：
+
+| 情形 | 处理 |
+| --- | --- |
+| hard_check 确定性结论无证据 | 降级为 `unknown` |
+| 红线 `hit` 无证据 | 降级为 `unknown` |
+| 判据确定性结论无证据 | 降级为 `unknown` + `evidence_status=none` |
+| `evidence_status=none` 却带证据 | 升为 `partial` |
+| 判据/红线顺序错乱但集合一致 | 按期望顺序重排 |
+
+### 回归结果（业务标注：李静文=入职、周清=入职、邓嘉欣=淘汰）
+
+| 候选人 | 修复前 | 修复后（连续两次一致） |
+| --- | --- | --- |
+| 临检社招李静文 | pass（曾因 C08 无证据直接报错） | **pass** ✅ |
+| 临检邓嘉欣 | **pass（漏判）** | **fail** ✅（否决项：检验科经验） |
+| 周清_检验技术员 | pass（第二次运行曾被误杀） | **pass** ✅ |
+
+第二批 5 份（无业务标注）全部 pass、无否决。**注意**：`第二批测试/临检邓嘉欣.pdf` 的正文其实是**汪翔**的简历（文件名与内容不符的重复文件），
+所以它判 pass 是正确的——使用这批数据前需要先核对文件名与正文。
 
 ---
 

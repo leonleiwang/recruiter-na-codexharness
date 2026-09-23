@@ -86,6 +86,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         definition = criterion_defs.get(cid) or {}
         name = str(definition.get("name") or cid)
         mode = str(definition.get("decision_mode") or "")
+        level = str(definition.get("level") or "")
         result = str(row.get("criterion_result") or "unknown")
         evidence_status = str(row.get("evidence_status") or "none")
         evidence_text = _first_evidence_text(row)
@@ -108,7 +109,20 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
             elif result == "unknown":
                 needs_verification.append({"item": name, "reason": reason or "该必须条件无法从简历确认"})
         elif mode == "resume_evidence":
-            if result in {"not_satisfied", "unknown"}:
+            # 必须项若被简历"明确且有据"地证伪，就是 grounded 的资格不符，直接否决；
+            # 证据不完整（partial/none）或无法判断（unknown）仍只进待核实，绝不误杀。
+            if result == "not_satisfied" and evidence_status == "confirmed" and level == "必须":
+                veto_items.append({
+                    "criterion": name,
+                    "criterion_id": cid,
+                    "decision_mode": mode,
+                    "criterion_result": result,
+                    "evidence_status": evidence_status,
+                    "detail": reason,
+                    "evidence": evidence_text,
+                    "rule": "resume_evidence_confirmed_not_satisfied",
+                })
+            elif result in {"not_satisfied", "unknown"}:
                 needs_verification.append({"item": name, "reason": reason or "该项需人工/电话确认"})
             elif result == "satisfied" and evidence_status == "confirmed":
                 confirmed_resume_evidence_count += 1

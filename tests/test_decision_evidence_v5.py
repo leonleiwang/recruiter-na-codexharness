@@ -84,12 +84,31 @@ def test_evaluator_rejects_invalid_criterion_result_enum():
     assert exc.value.code == "LLM_CONTRACT_INVALID"
 
 
-def test_evaluator_requires_evidence_for_explicit_not_satisfied():
+def test_evaluator_downgrades_definitive_result_without_evidence():
+    """没有逐字证据的"确定性结论"不可信：降级为 unknown/none 并留痕，
+    而不是让整份候选人评估抛错消失（ISSUE-018）。"""
     doc = _valid_doc()
     doc["criteria_assessments"][0].update({"criterion_result": "not_satisfied", "evidence_status": "confirmed", "evidence": []})
-    with pytest.raises(EvidenceEvaluationError) as exc:
-        _evaluator(doc).evaluate(CRITERIA, FACTS)
-    assert exc.value.code == "LLM_CONTRACT_INVALID"
+
+    repaired = _evaluator(doc).evaluate(CRITERIA, FACTS)
+
+    row = repaired["criteria_assessments"][0]
+    assert row["criterion_result"] == "unknown"
+    assert row["evidence_status"] == "none"
+    assert any(r["repair"] == "downgraded_to_unknown" for r in repaired["contract_repairs"])
+
+
+def test_evaluator_keeps_grounded_definitive_result_untouched():
+    doc = _valid_doc()
+    doc["criteria_assessments"][0].update({
+        "criterion_result": "not_satisfied", "evidence_status": "confirmed",
+        "evidence": [{"text": "原文引用", "source_path": "raw_text"}],
+    })
+
+    kept = _evaluator(doc).evaluate(CRITERIA, FACTS)
+
+    assert kept["criteria_assessments"][0]["criterion_result"] == "not_satisfied"
+    assert "contract_repairs" not in kept
 
 
 def test_evaluator_requires_exactly_one_assessment_per_criterion():
