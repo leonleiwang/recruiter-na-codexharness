@@ -26,6 +26,9 @@
 | ISSUE-012 | 后端不可用时，内部错误原文直接回给用人经理 | 中 | **已修复（代码）**，真实错误路径复测通过 |
 | ISSUE-013 | 多桥接实例抢占同一机器人的 Stream，导致钉钉侧报 INTERNAL_UNKNOWN | 高 | **已修复（部署脚本）**，真实钉钉收发复测通过 |
 | ISSUE-014 | 入站消息被静默丢弃（解析失败/字段缺失都无日志） | 中 | **已修复（适配器）** |
+| ISSUE-015 | 机器人被两个消费者抢占（DSH dsh-im 与独立桥接） | 高 | **已修复**（改为由 v5 桥接独占，v2.2 已整体删除） |
+| ISSUE-016 | 钉钉回复整条乱码（Python stdout 按 GBK 编码被当作 UTF-8 解码） | 高 | **已修复（代码+部署配置）**，已在钉钉消息库验证 |
+| ISSUE-017 | markdown 形态的钉钉消息正文被判为空，掉进 Codex 兜底报 ENOENT | 高 | **已修复（适配器）**，markdown 形态复测通过 |
 
 ### 修复摘要（2026-09-23）
 
@@ -500,6 +503,78 @@ DSH 侧另有一个独立故障（陈旧会话绑定导致每条消息都失败�
 ### 验证
 
 排障期间开启 debug 后可见完整回调帧，确认 `topic=/v1.0/im/bot/messages/get` 与 `senderStaffId` 均正常。
+
+---
+
+## ISSUE-016 钉钉回复整条乱码
+
+**严重级别：** 高 ｜ **状态：** 已修复，已在钉钉消息库验证原文
+
+### 现象
+
+钉钉里机器人每条回复都是乱码，例如：
+
+```
+��ǰ������ܶ�Ӧ�����׼��λ����Ϊ�������׻�����ֻȷ��һ���ؼ��㣺
+```
+
+### 根因
+
+Windows 上 Python 的 stdout 默认按**控制台代码页（GBK/cp936）**编码；桥接用 Node 读取子进程 stdout，
+Node 默认按 **UTF-8** 解码 → 整条回复乱码。本地手工验证时命令带着 `PYTHONUTF8=1`，所以一直没暴露。
+
+### 证据（同一条命令两种环境的字节对比）
+
+| 环境 | 能否按 UTF-8 解码 | 内容 |
+| --- | --- | --- |
+| 无 `PYTHONUTF8`（桥接环境） | 否（invalid start byte） | 按 GBK 解码可读，UTF-8 下是乱码 |
+| `PYTHONUTF8=1` | 是 | `"message": "当前需求可能对应多个标准岗位画像…"` |
+
+### 修复
+
+| 位置 | 改动 |
+| --- | --- |
+| `im/recruiter-na.mjs` 的 spawn env | 强制 `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8` |
+| `scripts/start-local.sh` | 导出同样两个变量 |
+| `deploy/recruiter-na.service` | 增加 `Environment=PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（Linux 上 LANG 缺失时同理） |
+| `deploy/recruiter-na.env.example`、`.env.local` | 文档化并默认开启 |
+
+### 验证
+
+重发后从钉钉消息库检索到机器人回复原文：
+
+```
+sender: Ai招聘专员
+text:   当前需求可能对应多个标准岗位画像，为避免误套画像，我只确认一个关键点：
+
+        该检验技术员岗位是面向应届生（从零培养）还是面向有经验的社招人员（可独立上岗）？
+```
+
+---
+
+## ISSUE-017 markdown 形态的钉钉消息被判为空文本
+
+**严重级别：** 高 ｜ **状态：** 已修复（适配器）
+
+### 现象
+
+某些入站消息（例如以 markdown 形式发出的消息）进到桥接后正文为空，
+于是不满足 `shouldUseHiringWorkflow` 的判断，直接掉进防御性 Codex 兜底并报 `spawn codex ENOENT`。
+
+### 根因
+
+钉钉机器人消息的正文位置随消息类型而变：文本消息在 `text.content`，**markdown 消息在 `markdown.text`**；
+适配器只读前者。
+
+### 修复
+
+新增 `firstNonEmptyText()`，正文按 `text.content` → `markdown.text` → `content` 依次取第一个非空值；
+字段摘要增加 `markdown=` 提示；正文为空时记一行 warn（此前是完全静默）。
+详见 `docs/VENDOR_ADAPTER_PATCHES.md` 补丁 3/4。
+
+### 验证
+
+markdown 形态消息复测：`[reply] source=hiring-workflow state=DRAFT`（修复前是 `spawn codex ENOENT`）。
 
 ---
 

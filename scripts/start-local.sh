@@ -29,6 +29,9 @@ export RECRUITER_RESUME_URL_DIR="${RECRUITER_RESUME_URL_DIR:-$ROOT/workspace/res
 export RECRUITER_DEDUPE_DIR="${RECRUITER_DEDUPE_DIR:-$ROOT/workspace/.im-dedupe}"
 export RECRUITER_PROGRESS_DIR="${RECRUITER_PROGRESS_DIR:-$ROOT/workspace/.progress}"
 export PYTHONPATH="$ROOT/runtime"
+# Python 子进程按 UTF-8 输出，避免 Windows 控制台代码页把回复变成乱码。
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
 
 mkdir -p "$ROOT/workspace" "$CODEX_HOME" "$RECRUITER_RESUME_URL_DIR"
 

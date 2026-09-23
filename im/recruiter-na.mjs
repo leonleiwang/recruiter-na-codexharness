@@ -71,6 +71,10 @@ function hostWorkflow(envelope, progress) {
       env: {
         ...process.env,
         PYTHONPATH: path.join(root, 'runtime'),
+        // Python 必须按 UTF-8 输出：Windows 上默认按控制台代码页（GBK）编码 stdout，
+        // 桥接按 UTF-8 解码后整条回复都会变成乱码。
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
         CODEXHARNESS_PROGRESS_FILE: progressFile,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
