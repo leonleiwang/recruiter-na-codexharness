@@ -33,6 +33,14 @@ class ResumeRepository:
 
     def health(self) -> DataSourceHealth:
         if self._backend_name != "mysql":
+            if self._allow_json_dev and self._app_env != "production":
+                # 开发/评估用本地 JSON 库：报告真实条数，否则 count() 恒为 0。
+                try:
+                    from rn.resume_db import JsonResumeStore
+                    total = len(JsonResumeStore(DEV_FIXTURE).all_resumes())
+                    return DataSourceHealth(status="ok", backend="json-dev", count=total)
+                except Exception as exc:
+                    return DataSourceHealth(status="unavailable", backend="json-dev", error=str(exc))
             return DataSourceHealth(status="degraded", backend=self._backend_name,
                                     error="MySQL is the only supported production backend")
         try:
