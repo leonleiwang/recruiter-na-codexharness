@@ -80,7 +80,10 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
         for item in policy.get(key) or []:
             counter += 1
             row = deepcopy(item)
-            row.update({"criterion_id": f"C{counter:02d}", "dimension": dimension, "source": "policy"})
+            # 判据编号在 policy 里显式声明：新增条目只追加新编号，
+            # 既有 C01-C12 的含义不会因为插入而漂移。
+            row.update({"criterion_id": str(item.get("criterion_id") or f"C{counter:02d}"),
+                        "dimension": dimension, "source": "policy"})
             criteria.append(row)
 
     for extra in _split_explicit_requirements(fields.get("extra_hard_requirements")):
@@ -102,19 +105,29 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
     matched_profile_id = str(getattr(profile, "profile_id", "") or match.get("profile_id") or "").strip()
     overrides = (policy.get("profile_criterion_overrides") or {}).get(matched_profile_id) or {}
     applied_overrides: list[dict[str, Any]] = []
+    excluded_criteria: list[dict[str, Any]] = []
     if overrides:
+        remaining: list[dict[str, Any]] = []
         for row in criteria:
             patch = overrides.get(str(row.get("name") or ""))
-            if not isinstance(patch, dict):
+            if isinstance(patch, dict) and patch.get("applicable") is False:
+                # 画像里没有这条判据：该画像下不参与评估，也不计入标签总数，
+                # 否则会拿另一画像的能力去要求候选人，虚高或虚低命中数。
+                excluded_criteria.append({"criterion_id": row["criterion_id"], "name": row["name"],
+                                          "dimension": row.get("dimension"),
+                                          "reason": patch.get("override_reason") or "画像未包含该判据"})
                 continue
-            for key in ("level", "decision_mode", "description", "evidence_hints"):
-                if key in patch:
-                    row[key] = patch[key]
-            row["source"] = f"profile_override:{matched_profile_id}"
-            if patch.get("override_reason"):
-                row["override_reason"] = patch["override_reason"]
-            applied_overrides.append({"criterion_id": row["criterion_id"], "name": row["name"],
-                                      "level": row.get("level"), "decision_mode": row.get("decision_mode")})
+            if isinstance(patch, dict):
+                for key in ("level", "decision_mode", "description", "evidence_hints"):
+                    if key in patch:
+                        row[key] = patch[key]
+                row["source"] = f"profile_override:{matched_profile_id}"
+                if patch.get("override_reason"):
+                    row["override_reason"] = patch["override_reason"]
+                applied_overrides.append({"criterion_id": row["criterion_id"], "name": row["name"],
+                                          "level": row.get("level"), "decision_mode": row.get("decision_mode")})
+            remaining.append(row)
+        criteria = remaining
 
     hard_filters = deepcopy(policy.get("hard_filters") or {})
     hard_filters["location"] = location
@@ -138,6 +151,7 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
             "urgency": fields.get("urgency") or "",
         },
         "profile_criterion_overrides_applied": applied_overrides,
+        "profile_criterion_exclusions": excluded_criteria,
         "description": policy.get("description") or "",
         "biz_challenge": list(policy.get("biz_challenge") or []),
         "hard_filters": hard_filters,

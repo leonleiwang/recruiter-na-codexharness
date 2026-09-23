@@ -130,7 +130,8 @@ def test_service_evaluates_full_pool_orders_passes_and_isolates_rejections_and_t
     assert [x["candidate_id"] for x in result["recommendations"]] == ["C2", "C1", "C3"]
     assert result["recommendations"][0]["recommendation_order"] == 1
     assert result["recommendations"][2]["readiness"] == "needs_verification"
-    assert result["recommendations"][0]["applicable_tag_count"] == 15
+    # 社招画像：6 能力 + 3 经历 + 4 特质 = 13 条判据，加学历/资格证/地点 3 个资格标签。
+    assert result["recommendations"][0]["applicable_tag_count"] == 16
     assert result["recommendations"][0]["matched_tag_count"] == 6
     assert [x["candidate_id"] for x in result["rejected_candidates"]] == ["C4"]
     assert [x["candidate_id"] for x in result["failures"]] == ["C5"]
@@ -138,6 +139,9 @@ def test_service_evaluates_full_pool_orders_passes_and_isolates_rejections_and_t
     run_dir = Path(result["trace_dir"])
     assert (run_dir / "decision_policy.json").exists()
     assert (run_dir / "actual_criteria.json").exists()
+    actual = json.loads((run_dir / "actual_criteria.json").read_text(encoding="utf-8"))
+    assert len(actual["criteria"]) == 13
+    assert [x["name"] for x in actual["profile_criterion_exclusions"]] == ["专业理论知识", "专业背景与项目经验", "持续学习"]
     assert (run_dir / "decision_snapshot.json").exists()
 
 

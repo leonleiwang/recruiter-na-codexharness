@@ -121,6 +121,18 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _criteria_count_by_profile(policy: dict) -> dict[str, int]:
+    """每个标准画像实际参与评估的判据数（policy 是两画像的并集）。"""
+    all_names = [str(x.get("name") or "") for key in ("capabilities", "experiences", "traits")
+                 for x in (policy.get(key) or [])]
+    out: dict[str, int] = {}
+    for profile_id, overrides in (policy.get("profile_criterion_overrides") or {}).items():
+        excluded = {name for name, patch in (overrides or {}).items()
+                    if isinstance(patch, dict) and patch.get("applicable") is False}
+        out[profile_id] = len([n for n in all_names if n not in excluded])
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.cmd == "policy":
@@ -131,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             "role": policy.get("role_name"),
             "supported_profile_ids": policy.get("supported_profile_ids"),
             "criteria_count": sum(len(policy.get(k) or []) for k in ("capabilities", "experiences", "traits")),
+            "criteria_by_profile": _criteria_count_by_profile(policy),
             "decision_model": "PASS / VERIFY / FAIL; no numeric candidate score",
         }, ensure_ascii=False, indent=2))
         return 0

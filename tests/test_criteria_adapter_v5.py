@@ -82,7 +82,42 @@ def test_experience_bar_follows_the_matched_profile_not_the_shared_policy():
     assert "实习" in fresh["description"] and "≥1年" in experienced["description"]
     assert fresh["source"] == "profile_override:PROFILE-91603AA55F6E"
     assert [o["criterion_id"] for o in freshgrad["profile_criterion_overrides_applied"]] == ["C06"]
-    assert [o["criterion_id"] for o in social["profile_criterion_overrides_applied"]] == ["C06"]
+    # 社招画像原文是"3年以上检验试剂管理经验"，该口径同样按画像覆盖。
+    assert [o["criterion_id"] for o in social["profile_criterion_overrides_applied"]] == ["C06", "C07"]
+
+
+def test_each_profile_is_evaluated_only_against_its_own_profile_items():
+    """policy 是应届与社招两份画像的并集；不属于某画像的判据在该画像下必须整条剔除，
+    否则会拿另一画像的能力去要求候选人，命中数分母也会跟着错。"""
+    freshgrad = build_actual_criteria(
+        _request(profile_id="PROFILE-91603AA55F6E"),
+        SimpleNamespace(profile_id="PROFILE-91603AA55F6E", name="检验技术员（应届）"),
+    )
+    social = build_actual_criteria(
+        _request(profile_id="PROFILE-412167F2937C"),
+        SimpleNamespace(profile_id="PROFILE-412167F2937C", name="检验技术员（社招）"),
+    )
+
+    fresh_names = {r["name"] for r in freshgrad["criteria"]}
+    social_names = {r["name"] for r in social["criteria"]}
+
+    assert "专业理论知识" in fresh_names and "专业理论知识" not in social_names
+    assert "持续学习" in fresh_names and "持续学习" not in social_names
+    assert "试剂耗材管理能力" in social_names and "试剂耗材管理能力" not in fresh_names
+    assert "问题分析与解决能力" in social_names and "问题分析与解决能力" not in fresh_names
+    assert "责任心" in social_names and "责任心" not in fresh_names
+
+    assert [x["criterion_id"] for x in freshgrad["profile_criterion_exclusions"]] == ["C02", "C13", "C07", "C08", "C11"]
+    assert [x["criterion_id"] for x in social["profile_criterion_exclusions"]] == ["C14", "C15", "C16"]
+    # 应届 5 能力 + 2 经历 + 4 特质 = 11 条判据（标签总数 14）；社招 6 + 3 + 4 = 13 条（标签总数 16）
+    assert len(freshgrad["criteria"]) == 11
+    assert len(social["criteria"]) == 13
+
+
+def test_unknown_profile_still_gets_every_policy_criterion():
+    criteria = build_actual_criteria(_request(profile_id=""), None)
+    assert criteria["profile_criterion_exclusions"] == []
+    assert len(criteria["criteria"]) == 16
 
 
 def test_unknown_profile_keeps_the_shared_policy_criteria():
