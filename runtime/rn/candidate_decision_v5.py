@@ -161,10 +161,15 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
 
 
 def recommendation_order_key(decision: dict[str, Any], pool_index: int) -> tuple[Any, ...]:
-    """Stable internal recommendation ordering, not a candidate score."""
+    """内部推荐顺序（不是人才分数，也不对外暴露）。
+
+    排序主轴 = 命中标签数（受理的业务要求/经历/能力条数）多者优先；
+    同命中数时，先用"没有待核实项"的，再看加分项与已确认事实数，
+    最后按候选池原始顺序保证稳定。
+    """
     is_fail = str(decision.get("decision") or "") != "pass"
     needs = decision.get("needs_verification") or []
-    group = 2 if is_fail else (1 if needs else 0)
+    matched = int(decision.get("matched_tag_count") or 0)
     pref_count = len(decision.get("preference_signals") or [])
     evidence_count = int(decision.get("confirmed_resume_evidence_count") or 0)
-    return (group, -pref_count, -evidence_count, len(needs), int(pool_index))
+    return (is_fail, -matched, 1 if needs else 0, -pref_count, -evidence_count, len(needs), int(pool_index))

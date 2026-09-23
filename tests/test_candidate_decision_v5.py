@@ -115,6 +115,19 @@ def test_recommendation_order_is_grouped_without_exposed_score():
     assert all("score" not in key for key in ready_two_prefs)
 
 
+def test_recommendation_order_prefers_more_matched_tags():
+    """排序主轴是命中标签数：命中多的排前面，且仍不引入数值分。"""
+    few_tags = {"decision": "pass", "needs_verification": [], "preference_signals": [{}, {}],
+                "confirmed_resume_evidence_count": 9, "matched_tag_count": 4}
+    many_tags = {"decision": "pass", "needs_verification": [{"item": "工作地点"}], "preference_signals": [],
+                 "confirmed_resume_evidence_count": 1, "matched_tag_count": 13}
+
+    ordered = sorted([("few", few_tags, 0), ("many", many_tags, 1)],
+                     key=lambda x: recommendation_order_key(x[1], x[2]))
+
+    assert [x[0] for x in ordered] == ["many", "few"]
+
+
 def test_matched_tag_count_uses_all_active_policy_labels_without_affecting_decision():
     criteria = {
         **CRITERIA,
