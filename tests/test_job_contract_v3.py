@@ -1,4 +1,4 @@
-from rn.job_contract_v3 import build_job_contract, normalize_resume_facts
+from rn.resume_screening.decision.job_contract_v3 import build_job_contract, normalize_resume_facts
 
 
 def legacy_job():

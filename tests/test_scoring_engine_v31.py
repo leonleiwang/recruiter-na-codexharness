@@ -1,4 +1,4 @@
-from rn.scoring_engine_v3 import score_candidate
+from rn.resume_screening.scoring.scoring_engine_v3 import score_candidate
 
 
 def _resume():
@@ -46,7 +46,7 @@ def test_direct_engine_accepts_grounded_semantic_case_without_tag_keyword():
 
 
 def test_rq_accepts_iso_datetime_as_of_and_created_at():
-    from rn.scoring_engine_v3 import calc_rq
+    from rn.resume_screening.scoring.scoring_engine_v3 import calc_rq
 
     resume = _resume()
     resume["resume_created_at"] = "2026-09-04T02:39:23"

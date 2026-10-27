@@ -13,14 +13,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from rn.evidence_grounding import validate_grounding
-from rn.job_contract_v3 import build_job_contract, normalize_resume_facts
+from rn.resume_screening.decision.evidence_grounding import validate_grounding
+from rn.resume_screening.decision.job_contract_v3 import build_job_contract, normalize_resume_facts
 from rn.progress import emit_progress
-from rn.scoring_engine_v3 import score_candidate
-from rn.scoring_v4 import combine_component_scores
-from rn.semantic_evidence_evaluator import EvidenceEvaluationError, SemanticEvidenceEvaluator
+from rn.resume_screening.scoring.scoring_engine_v3 import score_candidate
+from rn.resume_screening.scoring.scoring_v4 import combine_component_scores
+from rn.resume_screening.decision.semantic_evidence_evaluator import EvidenceEvaluationError, SemanticEvidenceEvaluator
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 
 
 def _write_json(path: Path, value: Any) -> None:

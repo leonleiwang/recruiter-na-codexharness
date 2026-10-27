@@ -15,7 +15,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from rn.evidence_grounding import validate_grounding
+from rn.resume_screening.decision.evidence_grounding import validate_grounding
 
 SCHEMA_VERSION = "3.0"
 ENGINE_VERSION = "3.1.0"

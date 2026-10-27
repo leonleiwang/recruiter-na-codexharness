@@ -5,10 +5,10 @@ ROOT = Path(__file__).resolve().parents[1]
 ACTIVE_FILES = [
     "runtime/rn/host_tool.py",
     "runtime/rn/hiring_workflow_v5.py",
-    "runtime/rn/screening_v5.py",
-    "runtime/rn/candidate_decision_v5.py",
-    "runtime/rn/criteria_adapter_v5.py",
-    "runtime/rn/decision_evidence_evaluator.py",
+    "runtime/rn/resume_screening/decision/screening_v5.py",
+    "runtime/rn/resume_screening/decision/candidate_decision_v5.py",
+    "runtime/rn/resume_screening/decision/criteria_adapter_v5.py",
+    "runtime/rn/resume_screening/decision/decision_evidence_evaluator.py",
     ".agents/skills/hiring-request/SKILL.md",
     "README.md",
     "AGENTS.md",
@@ -24,10 +24,10 @@ def test_release_version_and_v5_upgrade_script_exist():
 def test_host_tool_uses_v5_workflow_and_decision_screening():
     text = (ROOT / "runtime/rn/host_tool.py").read_text(encoding="utf-8")
     assert "from rn.hiring_workflow_v5 import HiringManagerWorkflow" in text
-    assert "from rn.screening_v5 import HiringDecisionScreeningService" in text
+    assert "from rn.resume_screening.decision.screening_v5 import HiringDecisionScreeningService" in text
     assert "HiringDecisionScreeningService(" in text
     assert "HiringScreeningService" not in text
-    assert "from rn.screening_v4" not in text
+    assert "from rn.resume_screening.scoring.screening_v4" not in text
 
 
 def test_active_v5_path_has_no_formal_candidate_score_contract_or_imports():

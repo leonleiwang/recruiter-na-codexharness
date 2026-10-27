@@ -38,10 +38,10 @@ echo "[7/10] v5 active-path / no-formal-score guard"
 ACTIVE=(
   "$ROOT/runtime/rn/host_tool.py"
   "$ROOT/runtime/rn/hiring_workflow_v5.py"
-  "$ROOT/runtime/rn/screening_v5.py"
-  "$ROOT/runtime/rn/candidate_decision_v5.py"
-  "$ROOT/runtime/rn/criteria_adapter_v5.py"
-  "$ROOT/runtime/rn/decision_evidence_evaluator.py"
+  "$ROOT/runtime/rn/resume_screening/decision/screening_v5.py"
+  "$ROOT/runtime/rn/resume_screening/decision/candidate_decision_v5.py"
+  "$ROOT/runtime/rn/resume_screening/decision/criteria_adapter_v5.py"
+  "$ROOT/runtime/rn/resume_screening/decision/decision_evidence_evaluator.py"
   "$ROOT/.agents/skills/hiring-request/SKILL.md"
   "$ROOT/README.md" "$ROOT/AGENTS.md" "$ROOT/USAGE.md"
 )
@@ -51,7 +51,7 @@ fi
 if ! grep -q 'from rn.hiring_workflow_v5 import HiringManagerWorkflow' "$ROOT/runtime/rn/host_tool.py"; then
   echo "Host is not using v5 workflow" >&2; exit 9
 fi
-if ! grep -q 'from rn.screening_v5 import HiringDecisionScreeningService' "$ROOT/runtime/rn/host_tool.py"; then
+if ! grep -q 'from rn.resume_screening.decision.screening_v5 import HiringDecisionScreeningService' "$ROOT/runtime/rn/host_tool.py"; then
   echo "Host is not using v5 Candidate Decision screening" >&2; exit 10
 fi
 

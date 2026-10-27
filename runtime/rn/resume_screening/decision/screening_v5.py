@@ -13,14 +13,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from rn.candidate_decision_v5 import decide_candidate, recommendation_order_key
-from rn.criteria_adapter_v5 import build_actual_criteria, load_inspection_technician_policy, supports_inspection_technician
-from rn.decision_evidence_evaluator import DecisionEvidenceEvaluator, validate_decision_evidence_contract
-from rn.evidence_grounding import repair_decision_grounding, validate_decision_grounding
-from rn.job_contract_v3 import normalize_resume_facts
+from rn.resume_screening.decision.candidate_decision_v5 import decide_candidate, recommendation_order_key
+from rn.resume_screening.decision.criteria_adapter_v5 import build_actual_criteria, load_inspection_technician_policy, supports_inspection_technician
+from rn.resume_screening.decision.decision_evidence_evaluator import DecisionEvidenceEvaluator, validate_decision_evidence_contract
+from rn.resume_screening.decision.evidence_grounding import repair_decision_grounding, validate_decision_grounding
+from rn.resume_screening.decision.job_contract_v3 import normalize_resume_facts
 from rn.progress import emit_progress
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 
 
 class UnsupportedScreeningPolicy(RuntimeError):
@@ -40,6 +40,20 @@ def _profile_for_request(request: dict[str, Any], profile_repo: Any) -> Any | No
         return None
     pid = str(match.get("profile_id") or "")
     return profile_repo.get(pid) if pid and hasattr(profile_repo, "get") else None
+
+
+def _matches_city(row: dict[str, Any], city: str) -> bool:
+    """候选人现居地或期望城市是否命中政策声明的硬性城市。
+
+    只用于「池内优先排序」，不做排除：外地候选人仍然保留在池里（可能被补位），
+    但不会挤掉本地候选人进 LLM 评估的名额。
+    """
+    if not city:
+        return False
+    for key in ("location", "expected_location", "current_city", "expected_city"):
+        if city in str(row.get(key) or ""):
+            return True
+    return False
 
 
 def _recommendation_reasons(criteria: dict[str, Any], assessment: dict[str, Any], decision: dict[str, Any]) -> list[str]:
@@ -164,6 +178,23 @@ def evaluate_candidate_v5(
             _write_json(trace / "timing.json", timing)
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    """读一个「正整数」环境变量,非法或 <=0 时回落到 default。
+
+    三个筛选参数此前只有 RECRUITER_SCREEN_GATHER_MULTIPLIER 有 ValueError 兜底,
+    RECRUITER_SCREEN_POOL_LIMIT 没有:填错一次服务直接起不来并抛栈,填 0 则
+    整池为空 —— 表现为「筛选没有候选人」,比报错更难查。
+    """
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 class HiringDecisionScreeningService:
     def __init__(self, *, resume_repo: Any, profile_repo: Any, jd_repo: Any, evaluator: Any | None = None,
                  run_root: str | Path | None = None, pool_limit: int | None = None):
@@ -175,7 +206,10 @@ class HiringDecisionScreeningService:
         # Interactive screening must remain bounded even when the library grows.
         # Retrieval chooses a small candidate pool; only that pool enters the
         # expensive semantic-evidence queue for this turn.
-        self.pool_limit = int(pool_limit or os.environ.get("RECRUITER_SCREEN_POOL_LIMIT", "12"))
+        if pool_limit:
+            self.pool_limit = max(1, int(pool_limit))
+        else:
+            self.pool_limit = _positive_int_env("RECRUITER_SCREEN_POOL_LIMIT", 12)
 
     def _pool(self, request: dict[str, Any], profile: Any | None) -> list[dict[str, Any]]:
         fields = (request.get("request") or {}).get("fields") or {}
@@ -184,30 +218,73 @@ class HiringDecisionScreeningService:
             queries.append(str(getattr(profile, "name", "") or ""))
         policy = load_inspection_technician_policy()
         queries.extend(str(x).strip() for x in (policy.get("retrieval_queries") or []) if str(x).strip())
-        collected: list[dict[str, Any]] = []
-        seen: set[str] = set()
+
+        # 政策里声明的硬性城市（如「杭州」）。检索本身是纯关键词的，若不按城市优先，
+        # 池位会被外地候选人占满，杭州本地候选人根本进不了 LLM 评估 —— 结果是
+        # 「十堰 46 岁 / 期望上海」的候选人被推荐到杭州岗位，只挂一条「待核实」。
+        hard_city = str((policy.get("hard_filters") or {}).get("location") or "").strip()
+        # 有硬性城市时多召回一些，做城市优先排序后再截断到 pool_limit。
+        gather_limit = self.pool_limit
+        if hard_city:
+            multiplier = _positive_int_env("RECRUITER_SCREEN_GATHER_MULTIPLIER", 3)
+            gather_limit = max(self.pool_limit, self.pool_limit * multiplier)
+
+        # 逐个检索词收集，再**轮询合并**。不能按顺序填满：第一个词往往是
+        # position_title（如「检验技术员」），MySQL 侧要求精确子串命中，召回的
+        # 人里可能一个杭州的都没有，而池位一旦被它填满，后面「医学检验」这类
+        # 召回更广的词就再没机会贡献候选人。
+        # 另外 MySQL 侧是 ORDER BY id DESC 后截断，杭州候选人（如周清）可能落在
+        # 第 80 位，因此按城市探测时要把单次召回放宽，并在**每个检索词内部**先把
+        # 命中城市的候选人提到前面，这样轮询取前几层就能取到他们。
+        retrieval_limit = gather_limit
+        if hard_city:
+            probe_limit = _positive_int_env("RECRUITER_SCREEN_CITY_PROBE_LIMIT", 200)
+            retrieval_limit = max(retrieval_limit, probe_limit)
+
+        per_query: list[list[dict[str, Any]]] = []
         for query in [q for q in queries if q]:
             try:
-                rows = self.resumes.search_candidates(query, limit=self.pool_limit)
+                rows = self.resumes.search_candidates(query, limit=retrieval_limit)
             except Exception:
                 rows = []
-            for row in rows:
+            rows = list(rows)
+            if hard_city:
+                rows = ([r for r in rows if _matches_city(r, hard_city)]
+                        + [r for r in rows if not _matches_city(r, hard_city)])
+            per_query.append(rows)
+
+        collected: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        depth = 0
+        while len(collected) < gather_limit and any(depth < len(rows) for rows in per_query):
+            for rows in per_query:
+                if depth >= len(rows):
+                    continue
+                row = rows[depth]
                 cid = str(row.get("candidate_id") or row.get("resume_id") or row.get("name") or "")
                 if not cid or cid in seen:
                     continue
                 seen.add(cid)
                 collected.append(row)
-                if len(collected) >= self.pool_limit:
-                    return collected
+                if len(collected) >= gather_limit:
+                    break
+            depth += 1
+
         if not collected:
-            for row in self.resumes.search_candidates("", limit=self.pool_limit):
+            for row in self.resumes.search_candidates("", limit=gather_limit):
                 cid = str(row.get("candidate_id") or row.get("resume_id") or row.get("name") or "")
                 if cid and cid not in seen:
                     seen.add(cid)
                     collected.append(row)
-                    if len(collected) >= self.pool_limit:
+                    if len(collected) >= gather_limit:
                         break
-        return collected
+
+        if hard_city and len(collected) > self.pool_limit:
+            matched = [r for r in collected if _matches_city(r, hard_city)]
+            others = [r for r in collected if not _matches_city(r, hard_city)]
+            collected = matched + others
+
+        return collected[: self.pool_limit]
 
     def screen_request(self, request: dict[str, Any]) -> dict[str, Any]:
         screening_started = time.perf_counter()

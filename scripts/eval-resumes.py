@@ -46,10 +46,10 @@ def load_env_file(path: Path) -> None:
 
 load_env_file(ROOT / ".env.local")
 
-from rn.candidate_decision_v5 import decide_candidate  # noqa: E402
-from rn.criteria_adapter_v5 import build_actual_criteria  # noqa: E402
-from rn.decision_evidence_evaluator import DecisionEvidenceEvaluator  # noqa: E402
-from rn.job_contract_v3 import normalize_resume_facts  # noqa: E402
+from rn.resume_screening.decision.candidate_decision_v5 import decide_candidate  # noqa: E402
+from rn.resume_screening.decision.criteria_adapter_v5 import build_actual_criteria  # noqa: E402
+from rn.resume_screening.decision.decision_evidence_evaluator import DecisionEvidenceEvaluator  # noqa: E402
+from rn.resume_screening.decision.job_contract_v3 import normalize_resume_facts  # noqa: E402
 
 
 def read_document_text(path: Path) -> str:

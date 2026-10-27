@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from rn.semantic_evidence_evaluator import (
+from rn.resume_screening.decision.semantic_evidence_evaluator import (
     EvidenceEvaluationError,
     _chat_completions_url,
     _requests_post_json_once,

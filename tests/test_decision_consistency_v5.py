@@ -11,8 +11,8 @@ import json
 
 import pytest
 
-from rn.decision_evidence_evaluator import DecisionEvidenceEvaluator, merge_consistent_documents
-from rn.semantic_evidence_evaluator import EvidenceEvaluationError
+from rn.resume_screening.decision.decision_evidence_evaluator import DecisionEvidenceEvaluator, merge_consistent_documents
+from rn.resume_screening.decision.semantic_evidence_evaluator import EvidenceEvaluationError
 
 CRITERIA = {
     "schema_version": "5.0",

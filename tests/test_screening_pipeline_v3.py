@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from rn.screening_pipeline_v3 import screen_candidate_v3, screen_candidates_v3
+from rn.resume_screening.scoring.screening_pipeline_v3 import screen_candidate_v3, screen_candidates_v3
 
 
 def job():
@@ -45,7 +45,7 @@ class FakeEvaluator:
 
 class FailingEvaluator:
     def evaluate(self, *_args, **_kwargs):
-        from rn.semantic_evidence_evaluator import EvidenceEvaluationError
+        from rn.resume_screening.decision.semantic_evidence_evaluator import EvidenceEvaluationError
         raise EvidenceEvaluationError("LLM_REQUEST_FAILED", "timeout")
 
 

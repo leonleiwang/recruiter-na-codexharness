@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from rn.decision_evidence_evaluator import DecisionEvidenceEvaluator
-from rn.evidence_grounding import validate_decision_grounding
-from rn.semantic_evidence_evaluator import EvidenceEvaluationError
+from rn.resume_screening.decision.decision_evidence_evaluator import DecisionEvidenceEvaluator
+from rn.resume_screening.decision.evidence_grounding import validate_decision_grounding
+from rn.resume_screening.decision.semantic_evidence_evaluator import EvidenceEvaluationError
 
 
 CRITERIA = {

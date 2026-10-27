@@ -1,4 +1,4 @@
-from rn.candidate_decision_v5 import decide_candidate, recommendation_order_key
+from rn.resume_screening.decision.candidate_decision_v5 import decide_candidate, recommendation_order_key
 
 
 CRITERIA = {

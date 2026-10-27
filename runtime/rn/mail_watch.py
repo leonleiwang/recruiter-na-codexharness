@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from rn.resume_db import JsonResumeStore, parse_text_resume, sha256_of_text
+from rn.resume_screening.parsing.resume_db import JsonResumeStore, parse_text_resume, sha256_of_text
 
 
 @dataclass
@@ -80,8 +80,8 @@ class MailIntake:
         else:
             resume["status"] = "REVIEW_REQUIRED"
             resume["routing"]["note"] = "无受控招聘编号，需人工归岗"
-        from rn.job_contract_v3 import normalize_resume_facts
-        from rn.scoring_engine_v3 import calc_rq
+        from rn.resume_screening.decision.job_contract_v3 import normalize_resume_facts
+        from rn.resume_screening.scoring.scoring_engine_v3 import calc_rq
         detail = calc_rq(normalize_resume_facts(resume), as_of=resume.get("created_at"))
         resume["rq"] = {"resume_quality_score": detail["score"], "breakdown": detail}
         self.store.upsert(resume)

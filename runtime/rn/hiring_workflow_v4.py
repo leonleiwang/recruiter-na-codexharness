@@ -4,9 +4,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from rn.hiring_jd_v4 import build_request_jd, render_jd_summary
 from rn.hiring_requests import HiringRequestRepository
 from rn.progress import emit_progress
+from rn.resume_screening.jd.generator import build_request_jd, render_jd_summary
 
 BASIC_REQUIRED = ["position_title", "department", "headcount", "location", "salary_range", "urgency", "extra_hard_requirements"]
 NO_PROFILE_REQUIRED = ["core_responsibilities", "hard_requirements", "key_experience_skills", "bonus_points"]

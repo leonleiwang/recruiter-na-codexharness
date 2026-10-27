@@ -1,5 +1,5 @@
 """_recommendation_reasons 渲染规则：特质项（trait 维度）一律不进推荐依据。"""
-from rn.screening_v5 import _recommendation_reasons
+from rn.resume_screening.decision.screening_v5 import _recommendation_reasons
 
 
 CRITERIA = {

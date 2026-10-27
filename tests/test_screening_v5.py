@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from rn.screening_v5 import (
+from rn.resume_screening.decision.screening_v5 import (
     HiringDecisionScreeningService,
     UnsupportedScreeningPolicy,
     evaluate_candidate_v5,

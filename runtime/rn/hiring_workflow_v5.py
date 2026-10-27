@@ -6,10 +6,10 @@ import re
 import sys
 from typing import Any
 
-from rn.hiring_jd_v4 import build_request_jd, render_jd_summary
 from rn.hiring_requests import HiringRequestRepository
 from rn.progress import emit_progress
-from rn.screening_v5 import UnsupportedScreeningPolicy
+from rn.resume_screening.decision.screening_v5 import UnsupportedScreeningPolicy
+from rn.resume_screening.jd.generator import build_request_jd, render_jd_summary
 from rn.resume_delivery import ResumeDeliveryError
 
 

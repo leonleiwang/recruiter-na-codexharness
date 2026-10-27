@@ -6,8 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'runtime'))
 from rn.hiring_requests import HiringRequestRepository
-from rn.repositories import ProfileRepository, JDRepository, ResumeRepository
-from rn.screening_v4 import HiringScreeningService
+from rn.repositories import ProfileRepository, ResumeRepository
+from rn.resume_screening.jd.templates import JDRepository
+from rn.resume_screening.scoring.screening_v4 import HiringScreeningService
 
 p = argparse.ArgumentParser(description='Run a 3-candidate v4 trace without changing recommendation cursor')
 p.add_argument('--owner', required=True)

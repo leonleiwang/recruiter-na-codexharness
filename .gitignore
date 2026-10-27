@@ -50,3 +50,12 @@ templates/简历推送报告.html
 
 # Local scratch space (diagnostics, extracted archives, uploads).
 /tmp/
+/.pytmp-*/
+/.pytest-tmp*/
+/pytest-cache-files-*/
+
+# Real candidate data must never be committed: parsed resume exports and
+# GUI-upload staging directories contain personal information.
+/.dsh-uploads/
+*.zip
+!docs/**/*.zip

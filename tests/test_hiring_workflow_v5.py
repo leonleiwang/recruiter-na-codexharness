@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from rn.hiring_analyzer_v4 import HiringIntentAnalyzer
 from rn.hiring_requests import HiringRequestRepository
 from rn.hiring_workflow_v5 import HiringManagerWorkflow
 from rn.resume_delivery import ResumeDeliveryError
-from rn.screening_v5 import UnsupportedScreeningPolicy
+from rn.resume_screening.decision.screening_v5 import UnsupportedScreeningPolicy
+from rn.resume_screening.jd.intake import HiringIntentAnalyzer
 
 
 class FakeProfileRepo:

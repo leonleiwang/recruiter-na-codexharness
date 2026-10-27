@@ -1,7 +1,10 @@
-"""Semantic requirement intake and standard-profile matching for hiring managers.
+"""JD 生成前置：招聘需求语义抽取与标准画像匹配。
 
-Profile selection and request-field extraction are performed by the configured
-LLM.  This module deliberately has no keyword or regular-expression fallback.
+用人经理的一条自然语言需求 → ``fields``（职位、地点、职责、硬性条件等）+
+``profile_match``（MATCHED / AMBIGUOUS / NO_MATCH）。画像选择与字段抽取完全由
+已配置的 LLM 完成；本模块刻意不提供关键词或正则兜底。
+
+抽取结果交给 :mod:`rn.resume_screening.jd.generator` 生成结构化 JD。
 """
 from __future__ import annotations
 
@@ -10,7 +13,12 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from rn.semantic_evidence_evaluator import EvidenceEvaluationError, extract_response_text, post_json_with_retry, _requests_post_json_once
+from rn.resume_screening.decision.semantic_evidence_evaluator import (
+    EvidenceEvaluationError,
+    _requests_post_json_once,
+    extract_response_text,
+    post_json_with_retry,
+)
 
 
 class HiringAnalysisError(RuntimeError):

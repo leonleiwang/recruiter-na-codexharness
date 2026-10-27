@@ -16,7 +16,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Optional
 
-from rn.resume_db import ResumeBackend, STATUS_NEW, sha256_of_text
+from rn.resume_screening.parsing.resume_db import ResumeBackend, STATUS_NEW, sha256_of_text
 
 try:
     import pymysql
@@ -297,6 +297,62 @@ class ResumeMySQLBackend(ResumeBackend):
             if info.get("ai_score"):
                 pass
 
+        # ===== raw_text 兜底抽取（结构化列缺失时）=====
+        # 生产 dump 里 work_year / work_year_norm / age_inf / predicted_salary /
+        # expect_job_objs / skills_objs / education_objs / job_exp_objs 等列经常
+        # 为空（本次导入的 112 行这些列**全为 NULL/[]**，只有 raw_text 是满的）。
+        # 如果放任不管，location / 期望城市 / 工作年限 / 期望薪资 全部丢失，v5 评分
+        # 会退化成盲推（把 46 岁十堰候选人推给「杭州应届」岗位）。
+        # 因此这里复用 resume_jsonl 里已验证的 raw_text 抽取器做兜底。
+        # 走 extract_profile_fallbacks 而不是逐个调静态方法:一次筛选有多个
+        # 检索词,每个检索词都会把这 ~500 行全转一遍,不缓存就是 queries×500
+        # 次全量正则。返回的容器是副本,就地改写不会污染缓存。
+        from rn.resume_screening.parsing.resume_jsonl import extract_profile_fallbacks as _fallbacks
+
+        _fb = _fallbacks(raw_text)
+
+        if not location:
+            location = _fb["location"]
+        if not expected_city:
+            expected_city = _fb["expected_city"]
+        if not total_work_years:
+            total_work_years = _fb["total_work_years"]
+        if not salary:
+            salary = _fb["salary"]
+        if not current_position:
+            current_position = _fb["current_position"]
+        if not current_company:
+            current_company = _fb["current_company"]
+        if not work_experiences:
+            work_experiences = _fb["work_experiences"]
+        if not skills:
+            skills = _fb["skills"]
+        for cert in _fb["certs"]:
+            if cert not in certifications:
+                certifications.append(cert)
+
+        # 结构化列里的脏值清洗:major='最高学' 是解析残留,college 可能带
+        # 「毕业于」前缀或把专业一起吞进来。
+        # 长度阈值取 24 而不是 16:「医学检验技术（临床微生物检验方向）」这类
+        # 带方向限定的正常专业名有 17-18 字,按 16 砍会把合法专业误删
+        # (major 只在 job_contract 的 relevant_majors 里当参考,不进硬判,
+        #  但它会出现在给用人经理的证据里)。真正的整句噪声用「含能力描述词」
+        # 判定,比单纯按长度砍更准。
+        _major = str(education.get("major") or "")
+        if _major in ("最高学", "无", "最高") or "毕业于" in _major or \
+                len(_major) > 24 or any(w in _major for w in ("具备", "熟悉", "熟练",
+                                                             "毕业", "曾任", "负责",
+                                                             "工作经历", "求职意向")):
+            education.pop("major", None)
+        _school = str(education.get("school") or "")
+        if not _school or _school.startswith("毕业于") or len(_school) > 20:
+            _clean_school = _fb["school"]
+            for _prefix in ("毕业于", "就读于", "学校：", "学校:"):
+                if _clean_school.startswith(_prefix):
+                    _clean_school = _clean_school[len(_prefix):]
+            if _clean_school:
+                education["school"] = _clean_school
+
         # ===== 构建标准 resume dict =====
         result = {
             "resume_id": rid,
@@ -382,14 +438,26 @@ class ResumeMySQLBackend(ResumeBackend):
         return result
 
     def _get_info_by_phone(self, phone=""):
-        """从 candidate_info 表读取人工修正后的候选人信息。"""
+        """从 candidate_info 表读取人工修正后的候选人信息。
+
+        candidate_info 是「人工修正」附加表，并非所有环境都存在（例如只导入了
+        candidate_resume 的简历库 dump）。缺表时按「无人工修正」处理，不能让它
+        把整条检索链路打断。
+        """
         if not phone:
             return None
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM {self.table_info} WHERE phone = %s LIMIT 1", (phone,))
-        row = cur.fetchone()
-        cur.close()
+        try:
+            cur.execute(f"SELECT * FROM {self.table_info} WHERE phone = %s LIMIT 1", (phone,))
+            row = cur.fetchone()
+        except pymysql.err.MySQLError as exc:
+            # 1146 = ER_NO_SUCH_TABLE（candidate_info 不存在时按无人工修正处理）
+            if exc.args and exc.args[0] == 1146:
+                return None
+            raise
+        finally:
+            cur.close()
         return row
 
     def search(self, query="", **filters):
@@ -487,7 +555,7 @@ class ResumeMySQLBackend(ResumeBackend):
         same MySQL row that the delivery flow later resolves.
         """
         from rn.mail_watch import _extract_docx_or_pdf
-        from rn.resume_db import parse_text_resume
+        from rn.resume_screening.parsing.resume_db import parse_text_resume
 
         source = Path(path).resolve()
         root = Path(source_root).resolve()

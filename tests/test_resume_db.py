@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
 
-from rn.resume_db import JsonResumeStore, parse_text_resume, sha256_of_text  # noqa: E402
+from rn.resume_screening.parsing.resume_db import JsonResumeStore, parse_text_resume, sha256_of_text  # noqa: E402
 from rn.mail_watch import MailIntake  # noqa: E402
 
 

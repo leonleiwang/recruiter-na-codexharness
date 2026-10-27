@@ -14,8 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from rn.criteria_adapter_v5 import load_inspection_technician_policy
-from rn.resume_db import JsonResumeStore, ResumeHttpBackend, parse_text_resume, sha256_of_bytes
+from rn.resume_screening.decision.criteria_adapter_v5 import load_inspection_technician_policy
+from rn.resume_screening.parsing.resume_db import JsonResumeStore, ResumeHttpBackend, parse_text_resume, sha256_of_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = str(ROOT / "data" / "dev" / "resume_db.fixture.json")
@@ -26,11 +26,15 @@ def _store(args: argparse.Namespace) -> Any:
     if args.backend == "http":
         return ResumeHttpBackend(args.http_url)
     if args.backend == "mysql":
-        from rn.resume_mysql import ResumeMySQLBackend
+        from rn.resume_screening.parsing.resume_mysql import ResumeMySQLBackend
         return ResumeMySQLBackend(
             host=args.mysql_host, port=args.mysql_port, user=args.mysql_user,
             password=args.mysql_password, database=args.mysql_database,
         )
+    if args.backend == "jsonl":
+        # Real parsed-resume archive; read-only, safe outside development.
+        from rn.resume_screening.parsing.resume_jsonl import ResumeJsonlBackend
+        return ResumeJsonlBackend()
     if os.environ.get("APP_ENV", "development").lower() == "production":
         raise RuntimeError("PRODUCTION_JSON_RESUME_DB_FORBIDDEN")
     return JsonResumeStore(Path(db))
@@ -88,7 +92,7 @@ def _dev_search(rows: list[dict[str, Any]], q: str = "", degree: str | None = No
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rn", description="Recruiter-Na v5 Candidate Decision support CLI")
     p.add_argument("--db", default=DEFAULT_DB, help="开发测试 JSON fixture；生产禁用")
-    p.add_argument("--backend", choices=["json", "http", "mysql"], default=os.environ.get("RN_BACKEND", "mysql"))
+    p.add_argument("--backend", choices=["json", "jsonl", "http", "mysql"], default=os.environ.get("RN_BACKEND", "mysql"))
     p.add_argument("--http-url", default=os.environ.get("RESUME_DB_API_URL", "http://127.0.0.1:8787"))
     p.add_argument("--mysql-host", default=os.environ.get("MYSQL_HOST", "127.0.0.1"))
     p.add_argument("--mysql-port", type=int, default=int(os.environ.get("MYSQL_PORT", "3306")))

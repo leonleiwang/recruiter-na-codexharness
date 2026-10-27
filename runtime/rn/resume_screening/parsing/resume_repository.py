@@ -2,6 +2,11 @@
 
 This repository wraps the MySQL backend with production fail-closed semantics.
 In production, it MUST NOT silently fall back to JSON resume DB.
+
+Supported backends (selected by env `RN_BACKEND`):
+  - "mysql"  : production MySQL (default)
+  - "jsonl"  : read-only jsonl file (recruiter-na-parsed-resumes-20260923/resumes.jsonl)
+  - "json"   : legacy local JSON fixture (dev-only, requires RN_ALLOW_JSON_DEV=true)
 """
 from __future__ import annotations
 
@@ -10,10 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from rn.repositories.models import DataSourceHealth, ResumeRecord
-from rn.resume_mysql import ResumeMySQLBackend
+from rn.resume_screening.parsing.resume_mysql import ResumeMySQLBackend
+from rn.resume_screening.parsing.resume_jsonl import ResumeJsonlBackend
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 DEV_FIXTURE = ROOT / "data/dev/resume_db.fixture.json"  # development only
 
 
@@ -21,22 +27,34 @@ class ResumeRepository:
     """Read-only access to the resume database with production guardrails."""
 
     def __init__(self, backend: str | None = None):
-        self._backend_name = backend or os.environ.get("RN_BACKEND", "mysql")
+        self._backend_name = (backend or os.environ.get("RN_BACKEND", "mysql")).lower()
         self._allow_json_dev = os.environ.get("RN_ALLOW_JSON_DEV", "false").lower() == "true"
         self._app_env = os.environ.get("APP_ENV", os.environ.get("RN_BACKEND", "production"))
         self._mysql: ResumeMySQLBackend | None = None
+        self._jsonl: ResumeJsonlBackend | None = None
 
     def _get_mysql(self) -> ResumeMySQLBackend:
         if self._mysql is None:
             self._mysql = ResumeMySQLBackend()
         return self._mysql
 
+    def _get_jsonl(self) -> ResumeJsonlBackend:
+        if self._jsonl is None:
+            self._jsonl = ResumeJsonlBackend()
+        return self._jsonl
+
     def health(self) -> DataSourceHealth:
+        if self._backend_name == "jsonl":
+            try:
+                be = self._get_jsonl()
+                count = be.count()
+                return DataSourceHealth(status="ok", backend="jsonl", count=count)
+            except Exception as exc:
+                return DataSourceHealth(status="unavailable", backend="jsonl", error=str(exc))
         if self._backend_name != "mysql":
             if self._allow_json_dev and self._app_env != "production":
-                # 开发/评估用本地 JSON 库：报告真实条数，否则 count() 恒为 0。
                 try:
-                    from rn.resume_db import JsonResumeStore
+                    from rn.resume_screening.parsing.resume_db import JsonResumeStore
                     total = len(JsonResumeStore(DEV_FIXTURE).all_resumes())
                     return DataSourceHealth(status="ok", backend="json-dev", count=total)
                 except Exception as exc:
@@ -63,6 +81,13 @@ class ResumeRepository:
         return 0
 
     def search(self, query: str = "", limit: int = 20, **filters: Any) -> list[ResumeRecord]:
+        if self._backend_name == "jsonl":
+            try:
+                be = self._get_jsonl()
+                raw_list = be.search(query, limit=limit, **filters)
+                return [ResumeRecord(resume_id=r.get("resume_id", ""), name=r.get("name", ""), raw=r) for r in raw_list]
+            except Exception as exc:
+                raise RuntimeError(f"RESUME_BACKEND_UNAVAILABLE: {exc}") from exc
         if self._backend_name != "mysql":
             if self._allow_json_dev and self._app_env != "production":
                 return self._search_json(query, limit, **filters)
@@ -77,11 +102,30 @@ class ResumeRepository:
             raise RuntimeError(f"RESUME_BACKEND_UNAVAILABLE: {exc}") from exc
 
     def get(self, resume_id: str) -> ResumeRecord | None:
+        if self._backend_name == "jsonl":
+            try:
+                be = self._get_jsonl()
+                row = be.get(resume_id)
+                if row:
+                    return ResumeRecord(resume_id=row.get("resume_id", ""), name=row.get("name", ""), raw=row)
+                return None
+            except Exception as exc:
+                raise RuntimeError(f"RESUME_BACKEND_UNAVAILABLE: {exc}") from exc
         results = self.search(query=resume_id, limit=1)
         return results[0] if results else None
 
     def get_candidate(self, identifier: str) -> dict[str, Any] | None:
         """Get a full candidate resume dict by identifier (name, phone, or resume_id)."""
+        if self._backend_name == "jsonl":
+            try:
+                be = self._get_jsonl()
+                if str(identifier).strip().isdigit():
+                    row = be.get(str(identifier).strip())
+                    return row
+                results = be.search(query=identifier, limit=1)
+                return results[0] if results else None
+            except Exception as exc:
+                raise RuntimeError(f"RESUME_BACKEND_UNAVAILABLE: {exc}") from exc
         if self._backend_name != "mysql":
             if self._allow_json_dev and self._app_env != "production":
                 return self._get_candidate_json(identifier)
@@ -97,6 +141,12 @@ class ResumeRepository:
 
     def search_candidates(self, query: str = "", limit: int = 50, **filters: Any) -> list[dict[str, Any]]:
         """Search and return full candidate resume dicts for screening."""
+        if self._backend_name == "jsonl":
+            try:
+                be = self._get_jsonl()
+                return be.search(query, limit=limit, **filters)
+            except Exception as exc:
+                raise RuntimeError(f"RESUME_BACKEND_UNAVAILABLE: {exc}") from exc
         if self._backend_name != "mysql":
             if self._allow_json_dev and self._app_env != "production":
                 return self._search_candidates_json(query, limit, **filters)
@@ -109,18 +159,18 @@ class ResumeRepository:
 
     def _search_json(self, query: str = "", limit: int = 20, **filters: Any) -> list[ResumeRecord]:
         """Development-only JSON fallback. Must not be used in production."""
-        from rn.resume_db import JsonResumeStore
+        from rn.resume_screening.parsing.resume_db import JsonResumeStore
         db = JsonResumeStore(DEV_FIXTURE)
         results = db.search(query, limit=limit, **filters)
         return [ResumeRecord(resume_id=r.get("resume_id", ""), name=r.get("name", ""), raw=r) for r in results]
 
     def _get_candidate_json(self, identifier: str) -> dict[str, Any] | None:
-        from rn.resume_db import JsonResumeStore
+        from rn.resume_screening.parsing.resume_db import JsonResumeStore
         db = JsonResumeStore(DEV_FIXTURE)
         results = db.search(query=identifier, limit=1)
         return results[0] if results else None
 
     def _search_candidates_json(self, query: str = "", limit: int = 50, **filters: Any) -> list[dict[str, Any]]:
-        from rn.resume_db import JsonResumeStore
+        from rn.resume_screening.parsing.resume_db import JsonResumeStore
         db = JsonResumeStore(DEV_FIXTURE)
         return db.search(query, limit=limit, **filters)

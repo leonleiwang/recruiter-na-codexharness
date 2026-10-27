@@ -15,7 +15,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "runtime"))
 
-from rn.repositories import ProfileRepository, JDRepository, ResumeRepository, DataSourcesSnapshot, DataSourceHealth
+from rn.repositories import ProfileRepository, ResumeRepository, DataSourcesSnapshot, DataSourceHealth
+from rn.resume_screening.jd.templates import JDRepository
 
 
 def check_all() -> DataSourcesSnapshot:

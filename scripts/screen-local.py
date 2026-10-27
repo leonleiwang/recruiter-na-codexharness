@@ -33,8 +33,9 @@ def load_env_file(path: Path) -> None:
 
 load_env_file(ROOT / ".env.local")
 
-from rn.repositories import JDRepository, ProfileRepository, ResumeRepository  # noqa: E402
-from rn.screening_v5 import HiringDecisionScreeningService  # noqa: E402
+from rn.repositories import ProfileRepository, ResumeRepository  # noqa: E402
+from rn.resume_screening.decision.screening_v5 import HiringDecisionScreeningService  # noqa: E402
+from rn.resume_screening.jd.templates import JDRepository  # noqa: E402
 
 
 def main() -> int:

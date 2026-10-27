@@ -52,7 +52,7 @@ The verified 14-profile repository remains a separate authority for profile matc
 
 ## 5. Actual Hiring Criteria adapter
 
-`criteria_adapter_v5.py` merges the accepted policy with the request delta.
+`resume_screening/decision/criteria_adapter_v5.py` merges the accepted policy with the request delta.
 
 Hiring-manager deltas such as:
 

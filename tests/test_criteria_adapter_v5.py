@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from rn.criteria_adapter_v5 import (
+from rn.resume_screening.decision.criteria_adapter_v5 import (
     build_actual_criteria,
     load_inspection_technician_policy,
     supports_inspection_technician,

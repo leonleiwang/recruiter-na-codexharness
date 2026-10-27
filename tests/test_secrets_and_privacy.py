@@ -1,8 +1,8 @@
 import inspect
 import json
 
-from rn.job_contract_v3 import normalize_resume_facts
-from rn.resume_mysql import ResumeMySQLBackend
+from rn.resume_screening.decision.job_contract_v3 import normalize_resume_facts
+from rn.resume_screening.parsing.resume_mysql import ResumeMySQLBackend
 
 
 def test_mysql_backend_has_no_hardcoded_password_default(monkeypatch):
@@ -28,7 +28,7 @@ def test_resume_facts_redact_common_sensitive_labels_and_contacts():
 
 
 def test_mysql_hometown_never_masquerades_as_current_location():
-    from rn.resume_mysql import ResumeMySQLBackend
+    from rn.resume_screening.parsing.resume_mysql import ResumeMySQLBackend
     backend = ResumeMySQLBackend(password="test-only", database="test")
     row = {
         "id": 1,

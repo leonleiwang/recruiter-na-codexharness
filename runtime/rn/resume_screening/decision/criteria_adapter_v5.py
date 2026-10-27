@@ -11,7 +11,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 _POLICY_PATH = ROOT / "knowledge" / "recruiting" / "policies" / "inspection_technician_v1.json"
 _EMPTY_MARKERS = {"", "没有", "无", "暂无", "无额外要求", "没有额外要求", "none", "n/a", "na"}
 

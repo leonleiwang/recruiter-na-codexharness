@@ -1,4 +1,4 @@
-from rn.hiring_analyzer_v4 import HiringIntentAnalyzer
+from rn.resume_screening.jd.intake import HiringIntentAnalyzer
 
 
 class P:
