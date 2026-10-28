@@ -10,6 +10,12 @@ _HARD_LABELS = {
 }
 
 
+def applicable_tag_names(criteria: dict[str, Any]) -> list[str]:
+    """Business names for the same active labels counted in a decision."""
+    definitions = {str(x.get("criterion_id") or ""): x for x in criteria.get("criteria") or []}
+    return [*_HARD_LABELS.values(), *(str(row.get("name") or cid) for cid, row in definitions.items())]
+
+
 def _first_evidence_text(row: dict[str, Any]) -> str:
     evidence = row.get("evidence") or []
     if evidence and isinstance(evidence[0], dict):
@@ -29,6 +35,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     # remain risk checks and are deliberately excluded from positive matches.
     applicable_tag_count = len(criterion_defs) + 3
     matched_tag_count = 0
+    matched_tag_names: list[str] = []
 
     hard = assessment.get("hard_checks") or {}
     hard_summary: dict[str, Any] = {"pass": True, "details": {}}
@@ -43,6 +50,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         needs_verification.append({"item": "学历", "reason": edu.get("reasoning_summary") or "简历未提供足够学历/专业信息"})
     elif edu_status == "matched":
         matched_tag_count += 1
+        matched_tag_names.append(_HARD_LABELS["education"])
 
     cert = hard.get("certification") or {}
     cert_status = str(cert.get("status") or "unknown")
@@ -58,6 +66,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         needs_verification.append({"item": "检验资格证", "reason": cert.get("reasoning_summary") or "简历未提供足够证书信息"})
     elif cert_status in {"valid", "pending_exam", "eligible_to_apply"}:
         matched_tag_count += 1
+        matched_tag_names.append(_HARD_LABELS["certification"])
         if cert_status == "eligible_to_apply":
             needs_verification.append({"item": "报考资格", "reason": "应届报考资格需核实；尚未报名、未持证，不代表已取得检验资格证"})
 
@@ -72,6 +81,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         needs_verification.append({"item": "工作地点", "reason": loc.get("reasoning_summary") or "简历未说明是否接受目标工作地点"})
     elif loc_status == "match":
         matched_tag_count += 1
+        matched_tag_names.append(_HARD_LABELS["location"])
 
     red_hits = []
     for red in assessment.get("red_line_assessments") or []:
@@ -99,6 +109,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
 
         if result == "satisfied" and evidence_status == "confirmed":
             matched_tag_count += 1
+            matched_tag_names.append(name)
 
         if mode == "hard_gate":
             if result == "not_satisfied":
@@ -161,6 +172,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         "preference_signals": preference_signals,
         "confirmed_resume_evidence_count": confirmed_resume_evidence_count,
         "matched_tag_count": matched_tag_count,
+        "matched_tag_names": matched_tag_names,
         "applicable_tag_count": applicable_tag_count,
     }
 

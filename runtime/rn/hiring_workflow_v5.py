@@ -9,6 +9,8 @@ from typing import Any
 from rn.hiring_requests import HiringRequestRepository
 from rn.progress import emit_progress
 from rn.resume_screening.decision.screening_v5 import UnsupportedScreeningPolicy
+from rn.resume_screening.decision.candidate_decision_v5 import applicable_tag_names
+from rn.resume_screening.decision.criteria_adapter_v5 import build_actual_criteria, supports_inspection_technician
 from rn.resume_screening.jd.generator import build_request_jd, render_jd_summary
 from rn.resume_delivery import ResumeDeliveryError
 
@@ -249,7 +251,7 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
         return "当前简历库中与这个招聘需求相关、且尚未推荐过的候选人已经全部推荐完了。该需求已进入 **等待 HR 寻源** 状态；后续有新简历进入后可以继续推荐。"
     lines = [f"### 👥 {request.get('position_title') or '当前岗位'}｜本批推荐 {len(batch)} 人", ""]
     for idx, item in enumerate(batch, 1):
-        lines.extend((["---", ""] if idx == 1 else ["", "---", ""]))
+        lines.extend((["---", ""] if idx == 1 else ["", "────────────", ""]))
         readiness = "⚠️ 通过（需确认）" if item.get("readiness") == "needs_verification" else "✅ 可直接推荐"
         lines.append(f"**{idx}. {item.get('name') or item.get('candidate_id')}**｜{readiness}")
         summary = item.get("summary") or {}
@@ -258,6 +260,10 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
             lines.append("｜".join(bits))
         tag_total = int(item.get("applicable_tag_count") or 0)
         tag_summary = f"符合标签：{int(item.get('matched_tag_count') or 0)}/{tag_total}" if tag_total else "已按本次岗位标签完成筛选"
+        if tag_total:
+            names = item.get("matched_tag_names")
+            detail = "历史记录未保存标签明细" if names is None else ("、".join(names) or "暂无已确认命中标签")
+            tag_summary += f"（{detail}）"
         lines.append(f"**通过理由：** {tag_summary}")
         reasons = item.get("recommendation_reasons") or []
         if reasons:
@@ -312,6 +318,8 @@ class HiringManagerWorkflow:
         except Exception:
             related = []
         jd = build_request_jd(request["request_id"], request["request"]["fields"], getattr(profile, "raw", None), related[0] if related else None)
+        if supports_inspection_technician(request, profile):
+            jd["screening_tag_names"] = applicable_tag_names(build_actual_criteria(request, profile))
         request = self.requests.update_for_owner(owner, request["request_id"], jd=jd, status="JD_READY", event_type="JD_READY")
         return {"handled": True, "request_id": request["request_id"], "state": "JD_READY", "message": render_jd_summary(jd)}
 
