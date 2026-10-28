@@ -226,7 +226,10 @@ def _course_free_corpus(corpus: str) -> str:
             if _ROTATION_LINE_RE.search(content) or _COURSE_WORK_LINE_RE.search(content):
                 in_courses = False
             else:
-                subjects = [part.strip() for part in re.split(r"[、,，;；|]", content) if part.strip()]
+                # Annotation punctuation is not a paragraph/metadata boundary.
+                # Remove whole parenthesized notes before splitting list items.
+                nominal = re.sub(r"[（(][^（）()]*[）)]", "", content)
+                subjects = [part.strip() for part in re.split(r"[、,，;；|]", nominal) if part.strip()]
                 if subjects and all(len(part) <= 48 and not _COURSE_PROSE_BREAK_RE.search(part)
                                     for part in subjects):
                     continue

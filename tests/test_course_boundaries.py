@@ -18,6 +18,8 @@ def _state(report):
     '主修课程：\n解剖学（必修）\n临床分子生物学检验',
     '主修课程：\n• 解剖学（选修，2学分）\n• 临床分子\n  生物学检验',
     '主修课程：\n临床生化\n临床分子生物学检验',
+    '主修课程：\n解剖学（学分：2）\n临床分子\n生物学检验',
+    '主修课程：\n解剖学（必修，学分：2）\n临床分子\n生物学检验',
 ])
 def test_course_context_does_not_require_complete_subject_suffix(courses):
     normalized = textutil.normalize_text(courses)
