@@ -42,14 +42,14 @@ if [[ ! -f /etc/recruiter-na/recruiter-na.env ]]; then
   chmod 600 /etc/recruiter-na/recruiter-na.env
 fi
 cp "$APP/deploy/recruiter-na.service" /etc/systemd/system/recruiter-na.service
-mkdir -p "$APP/workspace/runs" "$APP/workspace/reports" "$APP/workspace/.host-progress" "$APP/workspace/resume-url"
+mkdir -p "$APP/workspace/runs" "$APP/workspace/reports" "$APP/workspace/.host-progress"
 chown -R recruiter-na:recruiter-na /opt/recruiter-na
 systemctl daemon-reload
 
 echo "Installed Recruiter-Na v5 app and Codex CLI ${CODEX_VERSION}."
 echo "DO NOT start yet. Edit: /etc/recruiter-na/recruiter-na.env"
 echo "Required for resume delivery: RECRUITER_RESUME_SOURCE_ROOTS (empty value disables delivery)"
-echo "Optional: RECRUITER_RESUME_URL_BASE (served from workspace/resume-url), DINGTALK_AI_CARD_TEMPLATE_ID"
+echo "Optional: DINGTALK_AI_CARD_TEMPLATE_ID; public static resume fallback is disabled"
 echo "Also edit model/provider placeholders in: $HOME_DIR/config.toml"
 echo "Then run offline verification: sudo -u recruiter-na $APP/scripts/verify.sh"
 echo "Check Codex sandbox: sudo -u recruiter-na $APP/scripts/diagnose-codex-sandbox.sh"

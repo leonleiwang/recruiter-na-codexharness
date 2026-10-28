@@ -835,7 +835,7 @@ def _months_between(start: str, end: str, *, start_missing: bool = False, end_mi
     elif start_missing:
         months = (ey - sy) * 12 + em
     elif end_missing:
-        months = (ey - sy) * 12 + (sm - 1)
+        months = (ey - sy) * 12 + 1
     else:
         months = (ey - sy) * 12 + (em - sm) + 1
     return max(0, months)
@@ -1601,6 +1601,8 @@ def _parse_experiences(lines: list[str]) -> list[dict[str, Any]]:
             "position": "",
             "start_date": info["start"],
             "end_date": info["end"],
+            # Normalized dates can contain placeholder months; preserve uncertainty.
+            "duration_estimated": info["start_missing"] or info["end_missing"],
             "description": "",
             "months": _months_between(
                 info["start"],

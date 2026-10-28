@@ -630,7 +630,7 @@ def requirements_from_jd(jd: dict[str, Any]) -> dict[str, Any]:
 
     - 职责 / 关键能力 → 能力或经验标签（沿用 JD 文本的启发式归类）；
     - 加分项 → 「优先」标签；
-    - 学历 / 证书 / 地点 / 年龄 → ``hard_filters``（年龄由需求方显式提出，简历不符即不推荐）；
+    - 学历 / 证书 / 地点 / 年龄 → ``hard_filters``（年龄仅保留为人工合规提示，不用于自动决策）；
     - 其他硬要求（如「接受体检季加班」）→ ``hard_filters["other"]`` 逐条核验，不计入命中率分母。
     """
     jd = jd if isinstance(jd, dict) else {}
@@ -698,8 +698,8 @@ def requirements_from_jd(jd: dict[str, Any]) -> dict[str, Any]:
     doc["source"] = "jd"
     doc["jd_id"] = _clean_text(jd.get("jd_id"))
     doc["profile_id"] = _clean_text(jd.get("profile_id"))
-    # 结构化 JD 不做敏感行剔除：年龄是否成为筛选条件由需求方显式提出（写入 hard_filters.age），
-    # 其余敏感属性仍然不会从 JD 职责/能力文本里生成要求。
+    # 结构化年龄条件保留供人工合规审查；matching 不读取候选人年龄，
+    # 不参与推荐结论或顺序。其余敏感属性不生成评分要求。
     doc["sensitive_excluded"] = []
     doc["warnings"] = [
         warning for warning in (doc.get("warnings") or [])
@@ -714,8 +714,7 @@ def requirements_from_jd(jd: dict[str, Any]) -> dict[str, Any]:
             doc["warnings"].append("生成 JD 没有解析出任何要求标签：请检查需求字段（职责/关键能力/硬性条件）。")
     if doc["hard_filters"].get("age"):
         doc["warnings"].append(
-            "年龄是需求方显式提出的硬性条件：简历年龄不符合时报告结论为「不推荐」；"
-            "请确认该条件符合适用地区的反歧视法规。"
+            "年龄条件不用于自动决策或推荐排序，需人工合规审查。"
         )
     return doc
 
@@ -834,7 +833,7 @@ _HARD_FILTER_ACTIONS: dict[str, str] = {
     "education": "不满足 → 不推荐；未写明 → 待核实",
     "certification": "不满足 → 不推荐；未写明 → 待核实",
     "location": "不满足 → 不推荐；未写明 → 待核实",
-    "age": "不满足 → 不推荐（需求方显式提出）",
+    "age": "不用于自动决策或推荐排序；需人工合规审查",
     "other": "不进命中率，逐条核验（简历未写明 → 待核实）",
 }
 

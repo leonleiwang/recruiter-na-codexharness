@@ -40,14 +40,19 @@ explicitly with `RESUME_SOURCE_ROOTS_NOT_CONFIGURED` (visible in
 ```text
 RECRUITER_RESUME_SOURCE_ROOTS=/path/to/resume-originals   # ':'-separated; empty disables delivery
 RECRUITER_RESUME_MAX_BYTES=20971520
-RECRUITER_RESUME_URL_BASE=https://<host>/resumes          # scoped download fallback
-RECRUITER_RESUME_URL_DIR=/opt/recruiter-na/app/workspace/resume-url
 ```
 
 Each delivered resume must resolve through the resume backend's
-`source_file_path` to a regular file inside one of those roots. `RECRUITER_RESUME_URL_BASE`
-must be served by a static host that maps to `RECRUITER_RESUME_URL_DIR`; the
-deployment scripts create that directory but do not configure a web server.
+`source_file_path` to a regular file inside one of those roots. Delivery uses the
+DingTalk file API only. An explicit successful business response means submission,
+not recipient receipt. Missing capability, errors or unacknowledged responses
+produce a safe retry/contact-HR message; no static fallback is generated.
+Legacy `RECRUITER_RESUME_URL_BASE` / `RECRUITER_RESUME_URL_DIR` settings are ignored.
+Do not configure a public static mapping for original resumes.
+
+Historical links are not revoked by upgrading code. Follow the operator-only,
+default-dry-run [legacy exposure handling checklist](PR1_LEGACY_RESUME_LINKS.md).
+Do not delete business data during deployment.
 
 Optional DingTalk progress-card settings: `DINGTALK_AI_CARD_TEMPLATE_ID`,
 `DINGTALK_PROGRESS_CARD`, `DINGTALK_PROGRESS_THROTTLE_MS`.

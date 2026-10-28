@@ -17,14 +17,14 @@ import re
 import unicodedata
 
 _CJK = r"\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
-_CJK_GAP_RE = re.compile(rf"(?<=[{_CJK}])\s+(?=[{_CJK}])")
+_CJK_GAP_RE = re.compile(rf"(?<=[{_CJK}])[ \t\u00a0\u3000]+(?=[{_CJK}])")
 # OCR 逐字插的是单空格；两个以上空格通常是排版上的字段分隔（「张晓明   学历」），不能删。
 _CJK_WIDE_GAP_RE = re.compile(rf"(?<=[{_CJK}]) {{2,}}(?=[{_CJK}])")
 _GAP_SENTINEL = "\x00"
 # NFKC 会把全角标点折成半角，OCR 又常在「字 标点」之间插空格，两步一起处理。
 _CJK_PUNCT = "：:，,。.、；;！!？?（）()【】\\[\\]「」『』〈〉《》…—–-～~"
 _SPACE_AROUND_CJK_PUNCT_RE = re.compile(
-    rf"(?<=[{_CJK}])\s+(?=[{_CJK_PUNCT}])|(?<=[{_CJK_PUNCT}])\s+(?=[{_CJK}])"
+    rf"(?<=[{_CJK}])[ \t\u00a0\u3000]+(?=[{_CJK_PUNCT}])|(?<=[{_CJK_PUNCT}])[ \t\u00a0\u3000]+(?=[{_CJK}])"
 )
 _CJK_COLON_RE = re.compile(rf"(?<=[{_CJK}]):")
 _MULTI_SPACE_RE = re.compile(r"[ \t\u00a0\u3000]+")

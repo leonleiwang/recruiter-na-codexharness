@@ -9,7 +9,7 @@
    主链路是「招聘需求字段 → 生成 JD → JD 拆成能力/经验标签 → 简历命中几个标签」：
    把 PDF / DOCX / 图片 / 文本简历解析成指定字段，打能力/经验/特质标签，与 JD 标签比对，
    **综合匹配度 = 命中标签数 / 适用标签数**（只算能力/经验，特质只做面试关注点不计分）。
-   学历/证书/地点单列核验；需求方显式提出的年龄条件是不推荐门槛（简历年龄不符 → 结论「不推荐」）。
+   学历/证书/地点单列核验；年龄条件仅提示人工合规审查，不影响推荐结论与顺序。
    这份匹配度**不写回 v5 决策、不产生录用建议**，正式判定仍只走 `decision/`。
 2. **v5 正式筛选链路**：`decision/`（无数值评分，Resume Facts → LLM 语义证据 → 证据接地 → 确定性判定）。
 3. **v3/v4 历史评分链路**：`scoring/`，仅保留给回归脚本与历史测试，v5 活跃文件禁止 import。
@@ -75,7 +75,7 @@ runtime/rn/resume_screening/
 | `resume_screening.analysis.tags.extract_resume_tags(fields)` | 只做三维度标签 |
 | `resume_screening.analysis.requirements.build_job_requirements(job=… / job_text=…)` | 只做政策/JD 文本的岗位要求 |
 | `resume_screening.analysis.requirements.requirements_from_jd(jd)` | 生成 JD → 标签要求（职责/能力/加分项→标签，学历/证书/地点/年龄/其他→硬性条件） |
-| `resume_screening.analysis.matching.match_requirements(requirements, tags, fields)` | 只做匹配报告（标签命中率 + 硬性条件提示 + 年龄门槛） |
+| `resume_screening.analysis.matching.match_requirements(requirements, tags, fields)` | 只做匹配报告（标签命中率 + 硬性条件提示 + 年龄合规提示） |
 
 `analyze_*` 与 `analyze_document` 都接受 `requirements_doc=`：传入 `requirements_from_jd(...)` 的结果即按
 「生成 JD 的标签」评分，跳过 `job/job_text/policy` 的岗位要求推理（CLI 的 `--fields-file` / `--jd-json` 走的就是它）。
@@ -167,9 +167,8 @@ DocumentText（text + engines + warnings）
   （简历没写 ≠ 不匹配），单列在 `interview_pending`；
 - **特质不计分**：岗位特质要求与简历特质标签仍会展示，但既不进综合匹配度也不进缺口清单，
   只做面试关注点（`scored_dimensions` / `reference_dimensions` 可区分）；
-- **年龄是硬门槛**：需求方显式提出年龄要求（如「年龄 25-35 岁」）时写入 `hard_filters.age`，
-  简历年龄不符 → `disqualified=true`、`label="不推荐（年龄不符合硬性要求）"`、排序垫底；
-  简历没有年龄 → 「待核实」，不否决；需求方没提年龄 → 不收集、不判断；
+- **年龄不用于自动决策**：需求中显式提出的年龄条件保留在 `hard_filters.age` 仅供人工合规审查。
+  不读取或比较候选人年龄，不影响命中率、`disqualified`、推荐等级或排序；年龄缺失也不改变结果。
 - **其他硬要求**（如「接受体检季加班」）进 `hard_filters["other"]`，逐条显示「待核实」，
   不计入标签命中率分母（简历通常不会写这类意愿）；
 - 学历 / 证书 / 地点硬性条件在 `hard_filter_hints` 里逐条给「满足 / 待核实 / 不满足」，
@@ -192,7 +191,7 @@ DocumentText（text + engines + warnings）
   （命中率不足四成只说明标签写得少，不直接淘汰）；没有计分标签 → 空。命中率与结论分开看，
   结论只在报告 `recommendation` 字段，标签证据仍逐条列出；
 - 敏感属性（性别/婚育/籍贯/身份证等）在 JD 文本侧整行剔除，进 `sensitive_excluded`，
-  不进入要求列表、不参与排序；生成 JD 走结构化字段，除年龄外的敏感属性本就不会生成要求；
+  不进入要求列表、不参与排序；生成 JD 走结构化字段，敏感属性不生成评分要求，结构化年龄字段仅作合规提示；
 - 报告固定带 disclaimer：辅助参考、非录用评分、不替代面试与证件核验。
 
 - **词表口径（按 10 份真实检验技术员简历的人工回填校准）**：课程名不算经验证据
@@ -444,3 +443,11 @@ python -m rn.resume_screening.scoring.scoring_engine_v3 --help   # legacy v3 评
 - 数据基础测试（P2）：`tests/test_data_foundation_v34.py` 里需要 14 份原始画像 PDF /
   JD 原始 Excel 的两条用例改为**缺源包时 skip**（发布环境有完整源包会自动恢复校验），
   CI 不再因本地缺数据长期红。
+
+### PR #1 日期和模板兼容性说明
+
+工作经历新增布尔字段 `duration_estimated`，标识起始或结束月份缺失；报告显示“月份不完整，时长估算”。
+缺失结束月份采用同期、首尾月份计入的估算：2016.12–2019 为 37 个月，2019.02–2019 为 1 个月；
+完整日期算法不变，只有年份的既有保守口径保留。估算不是确切履历事实，年限门槛附近仍须核实原始日期。
+同岗位模板精确命中时 `related_template.match_type` 为 `exact`（其他仍为 `related`/`none`）；
+模板职责仅进入 `reference` 并标注需用人部门确认，不进入已确认职责或评分标签。

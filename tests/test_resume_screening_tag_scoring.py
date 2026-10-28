@@ -1,4 +1,4 @@
-"""标签命中率评分测试：需求字段 → JD → 标签 → 简历命中率 + 年龄硬门槛。"""
+"""标签命中率评分测试：需求字段 → JD → 标签 → 简历命中率 + 年龄合规提示。"""
 from __future__ import annotations
 
 import json
@@ -77,7 +77,7 @@ def test_requirements_from_jd_maps_hard_requirements_to_filters():
     assert "医学检验技术" in hard["education"]
     assert "检验士资格证" in hard["certification"]
     assert "25-35" in hard["age"]
-    # 年龄转成硬性条件后，合规提醒里要说明用途
+    # 年龄仅作合规提示，不能用于自动决策
     assert any("年龄" in warning for warning in doc["warnings"])
 
 
@@ -131,7 +131,7 @@ def test_parse_age_requirement(text: str, expected: tuple[int | None, int | None
 
 
 # ---------------------------------------------------------------------------
-# 命中率评分 + 年龄硬门槛
+# 命中率评分 + 年龄合规提示
 # ---------------------------------------------------------------------------
 
 
@@ -170,23 +170,26 @@ def test_age_within_range_is_not_disqualified():
         "matching"
     ]
     age_hint = next(hint for hint in matching["hard_filter_hints"] if hint["filter"] == "age")
-    assert age_hint["status"] == "满足"
+    assert age_hint["status"] == "不用于自动决策"
     assert matching["disqualified"] is False
 
 
-def test_age_over_limit_is_disqualified():
+def test_age_over_limit_is_not_disqualified():
     old = STRONG_RESUME.replace("27岁", "41岁")
     report = service.analyze_text(old, filename="old.txt", requirements_doc=_requirements_doc())
     matching = report["matching"]
-    assert matching["disqualified"] is True
-    assert matching["recommendation"] == "不推荐"
-    assert "不推荐" in matching["label"]
-    assert "41" in matching["disqualification_reason"]
+    assert matching["disqualified"] is False
+    reference = service.analyze_text(STRONG_RESUME, requirements_doc=_requirements_doc())["matching"]
+    assert matching["recommendation"] == reference["recommendation"]
+    assert matching["tag_hit_rate"] == reference["tag_hit_rate"]
+    from rn.resume_screening.analysis.matching import match_rank_key
+    assert match_rank_key(matching) == match_rank_key(reference)
     age_hint = next(hint for hint in matching["hard_filter_hints"] if hint["filter"] == "age")
-    assert age_hint["status"] == "不满足"
-    assert age_hint["blocking"] is True
+    assert age_hint["status"] == "不用于自动决策"
+    assert age_hint["blocking"] is False
+    assert age_hint["evidence"] == ""
     markdown = service.render_report_markdown(report)
-    assert "不推荐" in markdown
+    assert "人工合规审查" in markdown
     assert "标签命中率" in markdown
 
 
@@ -195,7 +198,7 @@ def test_age_missing_is_pending_not_disqualified():
     matching = service.analyze_text(no_age, filename="noage.txt", requirements_doc=_requirements_doc())["matching"]
     assert matching["disqualified"] is False
     age_hint = next(hint for hint in matching["hard_filter_hints"] if hint["filter"] == "age")
-    assert age_hint["status"] == "待核实"
+    assert age_hint["status"] == "不用于自动决策"
 
 
 def test_weak_resume_scores_lower_than_strong():
@@ -204,8 +207,9 @@ def test_weak_resume_scores_lower_than_strong():
         "matching"
     ]
     assert strong["tag_hit_rate"] > weak["tag_hit_rate"]
-    # 弱简历年龄 41 岁，触发硬门槛
-    assert weak["disqualified"] is True
+    # 弱简历证据少，只需核实；年龄不能触发否决。
+    assert weak["disqualified"] is False
+    assert weak["recommendation"] == "待核实"
 
 
 # ---------------------------------------------------------------------------

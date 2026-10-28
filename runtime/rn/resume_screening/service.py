@@ -473,6 +473,8 @@ def render_report_markdown(report: dict[str, Any]) -> str:
         lines.append("| --- | --- | --- |")
         for item in experiences:
             period = "-".join(part for part in (str(item.get("start_date") or ""), str(item.get("end_date") or "")) if part) or "—"
+            if item.get("duration_estimated"):
+                period += "（月份不完整，时长估算）"
             lines.append(f"| {period} | {item.get('company','')} | {item.get('position','')} |")
         lines.append("")
     if fields.get("missing_fields"):

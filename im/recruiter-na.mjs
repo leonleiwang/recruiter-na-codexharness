@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -24,20 +23,6 @@ const venvPython = process.env.RECRUITER_PYTHON_BIN || path.join(root, '.venv', 
 const hostTool = path.join(root, 'runtime', 'rn', 'host_tool.py');
 const dedupeDir = process.env.RECRUITER_DEDUPE_DIR || path.join(root, 'workspace', '.im-dedupe');
 const dedupe = new FileDedupeStore({ dir: dedupeDir });
-const resumeUrlDir = process.env.RECRUITER_RESUME_URL_DIR || path.join(root, 'workspace', 'resume-url');
-const resumeUrlBase = String(process.env.RECRUITER_RESUME_URL_BASE || '').replace(/\/$/, '');
-
-function publishResumeFallback(filePath, filename) {
-  if (!resumeUrlBase) throw new Error('RECRUITER_RESUME_URL_BASE is required for URL fallback');
-  const extension = path.extname(String(filename || '')) || '.pdf';
-  const token = randomUUID().replace(/-/g, '');
-  const published = path.join(resumeUrlDir, `${token}${extension}`);
-  fs.mkdirSync(resumeUrlDir, { recursive: true, mode: 0o755 });
-  fs.copyFileSync(filePath, published);
-  fs.chmodSync(published, 0o644);
-  return `${resumeUrlBase}/${token}${extension}`;
-}
-
 const runtime = new CodexCliRuntime({
   bin: process.env.CODEX_BIN || 'codex',
   codexHome: process.env.CODEX_HOME,
@@ -166,28 +151,26 @@ await channel.start(async (envelope, responder) => {
       let text = result.message || (result.error ? '抱歉，这次没能完成处理，请稍后重试。' : '已处理。');
       const followUpMessage = result.follow_up_message || '';
       if (result.resume_delivery) {
-        let directDelivered = false;
-        try {
-          await responder.sendFile?.({ filePath: result.resume_delivery.file_path, filename: result.resume_delivery.filename });
-          directDelivered = true;
-        } catch (error) {
-          console.error(`[resume-delivery] failed msg=${mid}: ${error.message}`);
+        let directSubmitted = false;
+        if (typeof responder.sendFile === 'function') {
+          try {
+            const receipt = await responder.sendFile({ filePath: result.resume_delivery.file_path, filename: result.resume_delivery.filename });
+            // The adapter returns the DingTalk business response. Require an
+            // explicit acknowledgement; absence is not evidence of submission.
+            const code = receipt?.errcode ?? receipt?.errCode ?? receipt?.code;
+            directSubmitted = Boolean(receipt && receipt.success !== false
+              && code != null && ['0', 'ok'].includes(String(code).toLowerCase()));
+            if (!directSubmitted) console.error('[resume-delivery] submission not acknowledged');
+          } catch {
+            // Provider errors may contain paths, tokens or resume metadata.
+            console.error('[resume-delivery] submission failed');
+          }
         }
-        // Session-webhook success only means the API accepted the message; it
-        // does not prove the recipient sees an attachment.  Always hand back
-        // the scoped download URL so a selection is never falsely reported as
-        // delivered without an accessible original.
-        try {
-          const url = publishResumeFallback(result.resume_delivery.file_path, result.resume_delivery.filename);
-          text += directDelivered
-            ? ` 已提交钉钉文件投递；为确保可获取，简历原件下载链接：${url}`
-            : ` 钉钉文件未确认送达，简历原件下载链接：${url}`;
-        } catch (fallbackError) {
-          console.error(`[resume-delivery] URL fallback failed msg=${mid}: ${fallbackError.message}`);
-          text += directDelivered
-            ? ' 已提交钉钉文件投递。'
-            : ' 已选中该候选人，但简历暂未送达，请稍后重试。';
-        }
+        // Never publish original resumes through an unauthenticated static URL.
+        // An accepted API submission does not prove recipient receipt.
+        text += directSubmitted
+          ? ' 已提交钉钉文件投递。'
+          : ' 已选中该候选人，但简历暂未送达，请稍后重试或联系 HR 安全获取。';
       }
       if (cardStarted) await finishProgress(responder, progress, text);
       else await responder.reply?.(text);

@@ -111,7 +111,7 @@ if [[ ! -x "$APP/.venv/bin/python" ]]; then python3 -m venv "$APP/.venv"; fi
 (cd "$APP/vendor/codexharness-im" && npm install --omit=dev)
 
 cp "$APP/deploy/recruiter-na.service" /etc/systemd/system/recruiter-na.service
-mkdir -p "$APP/workspace/runs" "$APP/workspace/reports" "$APP/workspace/.host-progress" "$APP/workspace/resume-url"
+mkdir -p "$APP/workspace/runs" "$APP/workspace/reports" "$APP/workspace/.host-progress"
 rm -f "$APP/workspace/resume_db.json" "$APP/workspace/resume_db.example.json"
 chown -R recruiter-na:recruiter-na /opt/recruiter-na
 

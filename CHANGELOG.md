@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — PR #1 six-defect repair
+
+- Disabled public static resume fallback; direct submission requires explicit DingTalk business acknowledgement.
+- Age is a non-scoring compliance notice, never a recommendation or ranking gate; this supersedes historical age-gate descriptions below.
+- Reports render contradicted and unknown states safely. Chinese line breaks survive normalization.
+- Missing end months use same-month estimates; work entries expose `duration_estimated`.
+- Exact-title JD templates supply unconfirmed wording references (`match_type=exact`), without creating requirements.
+- Historical public resume links require separate operator revocation; this patch does not delete old files.
+
+
 ## Unreleased — Resume Screening Package (parsing, scoring, decision, JD generation)
 
 - Semantics, scale, interview prompts, privacy and confirmation (P1/P2 hardening):

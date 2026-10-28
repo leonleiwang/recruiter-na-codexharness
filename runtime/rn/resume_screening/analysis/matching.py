@@ -10,7 +10,7 @@
 打分口径：**综合匹配度 = 标签命中率 = 命中标签数 / 适用标签数**（只统计能力/经验，
 ``cues.SCORING_DIMENSIONS``）；**特质不计分**（``cues.REFERENCE_DIMENSIONS``），只做参考
 展示和面试提问线索。硬性条件（学历/证书/地点/年龄）不进命中率，单独核验；
-其中需求方显式提出的**年龄**条件是硬门槛——简历年龄不符合时结论直接为「不推荐」。
+年龄条件仅提示人工合规审查，不影响推荐结论与排序。
 
 判定语义（三态 + 一个面试核实态）：
 
@@ -406,36 +406,15 @@ def _hard_filter_hints(requirements_doc: dict[str, Any], fields: dict[str, Any],
 
     age_text = str(hard.get("age") or "").strip()
     if age_text:
-        low, high = requirements_mod.parse_age_requirement(age_text)
-        actual_age = _resume_age(fields)
-        if low is not None and high is not None:
-            condition = f"{low}-{high} 岁"
-        elif low is not None:
-            condition = f"{low} 岁以上"
-        elif high is not None:
-            condition = f"{high} 岁以下"
-        else:
-            condition = age_text
-        if low is None and high is None:
-            status = "待核实"
-            note = "年龄条件无法解析出具体范围，需人工确认"
-        elif actual_age is None:
-            status = "待核实"
-            note = f"要求年龄 {condition}；简历未提取到年龄"
-        elif (low is not None and actual_age < low) or (high is not None and actual_age > high):
-            status = "不满足"
-            note = f"简历年龄 {actual_age} 岁，不符合 {condition}：需求方将该条件设为硬性门槛，结论为不推荐"
-        else:
-            status = "满足"
-            note = f"简历年龄 {actual_age} 岁，符合 {condition}"
+        # Do not inspect candidate age, compare it with a range, or let it
+        # affect recommendation/ranking. Retain only a compliance notice.
         hints.append({
             "filter": "age",
             "requirement": age_text,
-            "status": status,
-            "evidence": "" if actual_age is None else f"{actual_age} 岁",
-            "note": note,
-            # 年龄是需求方显式提出的硬门槛：不满足时直接「不推荐」，不只是提示。
-            "blocking": True,
+            "status": "不用于自动决策",
+            "evidence": "",
+            "note": "需求中的年龄条件不用于自动决策或推荐排序，需人工合规审查。",
+            "blocking": False,
         })
 
     other_text = str(hard.get("other") or "").strip()
@@ -691,7 +670,7 @@ def match_requirements(
     tag_hit_rate = (tag_hit / tag_applied) if tag_applied else 0.0
     hit_percent = round(tag_hit_rate * 100, 1) if tag_applied else None
 
-    # 硬性条件：学历/证书/地点是提示，年龄是需求方显式提出的硬门槛（不满足 → 不推荐）。
+    # 学历/证书/地点保留提示；年龄仅作合规提示，不参与决策。
     hard_hints = _hard_filter_hints(requirements_doc, fields, corpus)
     blocking_hints = [hint for hint in hard_hints if hint.get("blocking") and hint.get("status") == "不满足"]
     disqualified = bool(blocking_hints)
@@ -736,7 +715,7 @@ def match_requirements(
         label = "无法评估（岗位要求为空）"
         overall_percent = None
     elif disqualified:
-        label = "不推荐（年龄不符合硬性要求）"
+        label = "不推荐（不符合硬性要求）"
         overall_percent = hit_percent
     elif tag_applied:
         label = _match_label(tag_hit_rate)
@@ -833,7 +812,7 @@ def match_requirements(
                 "综合匹配度 = 标签命中率 = 命中标签数 / 适用标签数（只统计能力/经验计分标签）；"
                 "面试核实类要求（decision_mode=interview_verify）简历未提及时不计入分母，"
                 "单列在待面试核实里，避免把「没写」误判成「不匹配」。"
-                "特质不计分（仅参考）；学历/证书/地点只做硬性条件提示，年龄是需求方显式提出的硬门槛。"
+                "特质不计分（仅参考）；学历/证书/地点只做硬性条件提示，年龄不用于自动决策或推荐排序。"
             ),
         },
         "notes": notes,
@@ -863,7 +842,7 @@ def match_rank_key(report: dict[str, Any]) -> tuple[int, float, int, int]:
     )
 
 
-_STATE_ICONS = {STATE_MATCHED: "✅", STATE_WEAK: "⚠️", STATE_NOT_FOUND: "❌"}
+_STATE_ICONS = {STATE_MATCHED: "✅", STATE_WEAK: "⚠️", STATE_NOT_FOUND: "❌", STATE_CONTRADICTED: "⛔"}
 
 
 def render_matching_markdown(
@@ -948,7 +927,7 @@ def render_matching_markdown(
             lines.append(f"## {DIMENSION_LABELS[dim]}（不计分，仅参考）")
         lines.append("")
         for item in block["items"]:
-            icon = _STATE_ICONS[item["state"]]
+            icon = _STATE_ICONS.get(item["state"], "❔")
             state_label = item["state_label"]
             if item["interview_baseline_applied"]:
                 icon = "⏳"

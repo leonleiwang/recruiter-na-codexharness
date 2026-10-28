@@ -53,7 +53,7 @@ EXPECTED_KEYS = (
 )
 CONTENT_KEYS = set(EXPECTED_KEYS) - {"raw_text", "missing_fields", "extraction_notes"}
 EDUCATION_KEYS = {"level", "degree", "school", "major", "graduation_year"}
-WORK_KEYS = {"company", "position", "start_date", "end_date", "description", "months"}
+WORK_KEYS = {"company", "position", "start_date", "end_date", "description", "months", "duration_estimated"}
 
 
 def _current_month() -> str:
@@ -211,6 +211,7 @@ def test_result_keys_contract():
     for entry in result["work_experiences"]:
         assert set(entry) == WORK_KEYS
         assert isinstance(entry["months"], int)
+        assert isinstance(entry["duration_estimated"], bool)
     assert isinstance(result["certifications"], list)
     assert isinstance(result["skills"], list)
     assert isinstance(result["industry_tags"], list)

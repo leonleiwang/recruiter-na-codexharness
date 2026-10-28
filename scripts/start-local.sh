@@ -49,7 +49,6 @@ set +a
 export RECRUITER_REQUEST_DB="${RECRUITER_REQUEST_DB:-$ROOT/workspace/hiring_manager_requests.sqlite3}"
 export CODEX_HOME="${CODEX_HOME:-$ROOT/workspace/codex-home}"
 export CODEX_WORKDIR="${CODEX_WORKDIR:-$ROOT}"
-export RECRUITER_RESUME_URL_DIR="${RECRUITER_RESUME_URL_DIR:-$ROOT/workspace/resume-url}"
 export RECRUITER_DEDUPE_DIR="${RECRUITER_DEDUPE_DIR:-$ROOT/workspace/.im-dedupe}"
 export RECRUITER_PROGRESS_DIR="${RECRUITER_PROGRESS_DIR:-$ROOT/workspace/.progress}"
 export PYTHONPATH="$ROOT/runtime"
@@ -57,7 +56,7 @@ export PYTHONPATH="$ROOT/runtime"
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-mkdir -p "$ROOT/workspace" "$CODEX_HOME" "$RECRUITER_RESUME_URL_DIR"
+mkdir -p "$ROOT/workspace" "$CODEX_HOME"
 
 # 钉钉凭证缺失则无法启动；其余（LLM/MySQL/简历原件）缺失只告警，便于先验证连通性。
 fatal=()

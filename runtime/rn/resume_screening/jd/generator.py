@@ -218,7 +218,8 @@ def build_request_jd(request_id: str, fields: dict[str, Any], profile: dict[str,
     related_doc: dict[str, Any] = {
         "jd_id": getattr(related_jd, "jd_id", "") if related_jd else "",
         "title": getattr(related_jd, "title", "") if related_jd else "",
-        "match_type": "related" if related_jd else "none",
+        "match_type": ("exact" if title.casefold() == str(getattr(related_jd, "title", "")).strip().casefold()
+                       else "related") if related_jd else "none",
         "usage": "wording_reference_only",
     }
     if related_jd is not None:

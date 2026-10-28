@@ -77,7 +77,6 @@ Get-Content -LiteralPath $envFile -Encoding UTF8 | ForEach-Object {
 if (-not $env:RECRUITER_REQUEST_DB)    { $env:RECRUITER_REQUEST_DB    = Join-Path $root 'workspace/hiring_manager_requests.sqlite3' }
 if (-not $env:CODEX_HOME)              { $env:CODEX_HOME              = Join-Path $root 'workspace/codex-home' }
 if (-not $env:CODEX_WORKDIR)           { $env:CODEX_WORKDIR           = $root }
-if (-not $env:RECRUITER_RESUME_URL_DIR){ $env:RECRUITER_RESUME_URL_DIR= Join-Path $root 'workspace/resume-url' }
 if (-not $env:RECRUITER_DEDUPE_DIR)    { $env:RECRUITER_DEDUPE_DIR     = Join-Path $root 'workspace/.im-dedupe' }
 if (-not $env:RECRUITER_PROGRESS_DIR)  { $env:RECRUITER_PROGRESS_DIR   = Join-Path $root 'workspace/.progress' }
 
@@ -96,7 +95,6 @@ if ($fatal.Count -gt 0) {
 # ----- Ensure runtime directories exist -----
 New-Item -ItemType Directory -Force -Path (Split-Path $env:RECRUITER_REQUEST_DB) | Out-Null
 New-Item -ItemType Directory -Force -Path $env:CODEX_HOME                       | Out-Null
-New-Item -ItemType Directory -Force -Path $env:RECRUITER_RESUME_URL_DIR         | Out-Null
 New-Item -ItemType Directory -Force -Path $env:RECRUITER_DEDUPE_DIR             | Out-Null
 New-Item -ItemType Directory -Force -Path $env:RECRUITER_PROGRESS_DIR           | Out-Null
 
@@ -126,7 +124,6 @@ Write-Host ("python            = {0}" -f ($(if ($env:RECRUITER_PYTHON_BIN) { $en
 Write-Host ("request_db        = {0}" -f $env:RECRUITER_REQUEST_DB)
 Write-Host ("dedupe            = {0}" -f $env:RECRUITER_DEDUPE_DIR)
 Write-Host ("progress          = {0}" -f $env:RECRUITER_PROGRESS_DIR)
-Write-Host ("resume_url_dir    = {0}" -f $env:RECRUITER_RESUME_URL_DIR)
 Write-Host ''
 Write-Host 'Expect:'
 Write-Host '  Recruiter-Na v5.0.2 DingTalk bridge started; pid=...'

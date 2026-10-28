@@ -378,7 +378,7 @@ def _build_jd(args: argparse.Namespace) -> dict[str, Any]:
         repository = JDRepository(args.library_file or None)
         related_query = str(args.related_jd_title or "").strip()
         if related_query:
-            hits = repository.search_related(related_query)
+            hits = repository.search_exact(related_query) or repository.search_related(related_query)
             related = hits[0] if hits else None
             if related is None:
                 print(
@@ -388,8 +388,8 @@ def _build_jd(args: argparse.Namespace) -> dict[str, Any]:
         else:
             # 需求没给模板检索词时按岗位名称找同岗位模板：职责缺失时可用它的「参考措辞（需确认）」。
             title_hint = str(fields.get("position_title") or (profile or {}).get("name") or "").strip()
-            if title_hint and not repository.search_exact(title_hint):
-                hits = repository.search_related(title_hint)
+            if title_hint:
+                hits = repository.search_exact(title_hint) or repository.search_related(title_hint)
                 if hits and is_related_title(title_hint, hits[0].title):
                     related = hits[0]
                     print(
