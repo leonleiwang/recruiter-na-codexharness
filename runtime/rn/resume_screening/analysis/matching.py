@@ -187,16 +187,49 @@ def _normalize_cert_text(text: str) -> str:
     return _CERT_ALIAS_RE.sub(_sub, text)
 
 
-def _course_free_corpus(corpus: str) -> str:
-    """Drop course / training-plan lines so they cannot become 经验证据.
+_LIST_PREFIX_RE = re.compile(r"^\s*(?:[-•·*▪]+|[（(]?[一二三四五六七八九十0-9]+[）).、])\s*")
+_COURSE_SECTION_END_RE = re.compile(
+    r"^(?:工作(?:经历|经验)|实习(?:经历|经验)|项目(?:经历|经验)|教育(?:背景|经历)|"
+    r"专业技能|技能|证书|自我评价|求职意向|Work Experience|Internships?|Projects?)"
+    r"(?:\s*[:：].*)?$", re.IGNORECASE,
+)
+_COURSE_WORK_LINE_RE = re.compile(
+    r"负责|参与|承担|完成|开展|任职|就职|实习|轮转|轮岗|曾在|从事|使用|进行|工作中|"
+    r"在.{0,12}(?:医院|实验室)|"
+    r"\d{4}[./年-]|(?:公司|医院|检验所).*(?:检验员|技术员|工程师|工作)"
+)
+_COURSE_SUBJECT_RE = re.compile(
+    r"(?:学(?:检验)?|检验(?:技术)?|基础|技术|实验|分析|诊断|检测|培养|提取|管理|方法|原理|统计|英语|数学)$"
+    r"|^(?:PCR|RT-PCR|DNA|RNA)$", re.IGNORECASE,
+)
 
-    轮转/轮岗行按用户口径保留：轮转接触过某类科室即视为经验证据（合规边界内由面试复核）。
+
+def _course_free_corpus(corpus: str) -> str:
+    """Exclude labelled courses and noun-list continuations from experience only.
+
+    A new section or the first non-subject line ends the context. Blank lines
+    may separate course-list items, but do not authorize discarding prose.
+    Work/rotation evidence stays available, including untitled activity lines.
     """
-    return "\n".join(
-        line
-        for line in str(corpus or "").splitlines()
-        if not _COURSE_LINE_RE.search(line)
-    )
+    kept: list[str] = []
+    in_courses = False
+    for line in str(corpus or "").splitlines():
+        content = _LIST_PREFIX_RE.sub("", line).strip()
+        if _COURSE_SECTION_END_RE.fullmatch(content):
+            in_courses = False
+        elif _COURSE_LINE_RE.search(content):
+            in_courses = True
+            continue
+        elif in_courses and content:
+            subjects = [part.strip() for part in re.split(r"[、,，;；|]", content) if part.strip()]
+            if (not _COURSE_WORK_LINE_RE.search(content) and subjects
+                    and all(len(part) <= 48 and _COURSE_SUBJECT_RE.search(part) for part in subjects)):
+                continue
+            # Unclassified content is preserved and terminates course context;
+            # never swallow the rest of a resume merely after a course label.
+            in_courses = False
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def _course_only_evidence(corpus: str, evidence: str) -> bool:
@@ -204,6 +237,13 @@ def _course_only_evidence(corpus: str, evidence: str) -> bool:
     needle = re.sub(r"^…|…$", "", str(evidence or "")).strip()
     if len(needle) < 4:
         return False
+    # Extracted tag snippets can be far from the label or span course lines.
+    # Ground them against the same retained corpus used for experience keywords.
+    snippets = [re.sub(r"\s+", "", compact_text(part.strip().strip("…"))) for part in needle.split(" / ")]
+    original = re.sub(r"\s+", "", compact_text(corpus))
+    retained = re.sub(r"\s+", "", compact_text(_course_free_corpus(corpus)))
+    if snippets and all(len(part) >= 4 and part in original and part not in retained for part in snippets):
+        return True
     # 证据片段常被折行/压缩过，逐行 contains 可能对不上；只要片段本身带课程标记
     # （「主修课程：临床分子生物学检验…」），就按弱证据处理。
     if _COURSE_LINE_RE.search(needle):
