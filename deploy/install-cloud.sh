@@ -22,7 +22,7 @@ fi
 
 if ! id recruiter-na >/dev/null 2>&1; then useradd --system --home /opt/recruiter-na --shell /usr/sbin/nologin recruiter-na; fi
 mkdir -p "$APP" "$HOME_DIR" /etc/recruiter-na
-rsync -a --delete --exclude '.venv' --exclude 'node_modules' --exclude '.env' \
+rsync -a --delete --exclude '.venv' --exclude 'node_modules' --exclude '.env' --exclude '*.backup-*' --exclude '__pycache__' --exclude '.pytest_cache' \
   --exclude 'data/source/resumes/private' --exclude 'data/quarantine' --exclude 'workspace/hiring_manager_requests.sqlite3*' "$SRC/" "$APP/"
 python3 -m venv "$APP/.venv"
 "$APP/.venv/bin/pip" install --upgrade pip
@@ -48,6 +48,8 @@ systemctl daemon-reload
 
 echo "Installed Recruiter-Na v5 app and Codex CLI ${CODEX_VERSION}."
 echo "DO NOT start yet. Edit: /etc/recruiter-na/recruiter-na.env"
+echo "Required for resume delivery: RECRUITER_RESUME_SOURCE_ROOTS (empty value disables delivery)"
+echo "Optional: DINGTALK_AI_CARD_TEMPLATE_ID; public static resume fallback is disabled"
 echo "Also edit model/provider placeholders in: $HOME_DIR/config.toml"
 echo "Then run offline verification: sudo -u recruiter-na $APP/scripts/verify.sh"
 echo "Check Codex sandbox: sudo -u recruiter-na $APP/scripts/diagnose-codex-sandbox.sh"

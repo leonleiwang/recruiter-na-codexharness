@@ -47,7 +47,7 @@ rm -f /run/recruiter-na/data-gateway.sock 2>/dev/null || true
 
 mkdir -p "$APP"
 rsync -a --delete \
-  --exclude '.venv' --exclude 'node_modules' --exclude '.env' \
+  --exclude '.venv' --exclude 'node_modules' --exclude '.env' --exclude '*.backup-*' --exclude '__pycache__' --exclude '.pytest_cache' \
   --exclude 'data/source/resumes/private' --exclude 'data/quarantine' \
   --exclude 'workspace/runs' --exclude 'workspace/reports' \
   --exclude 'workspace/hiring_manager_requests.sqlite3*' \

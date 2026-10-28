@@ -11,5 +11,5 @@ test('/new is handled locally and exactly once', async () => {
   const replies = [];
   const handled = await handleControlCommand({ text: '/new', messageId: 'm1' }, { reply: async x => replies.push(x) });
   assert.equal(handled, true);
-  assert.deepEqual(replies, ['已开启新会话，请发送你的问题。']);
+  assert.deepEqual(replies, ['请直接发送“我要招一个……”创建新招聘需求；已有需求不会因 /new 被清空。']);
 });

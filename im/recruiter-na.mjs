@@ -23,7 +23,6 @@ const venvPython = process.env.RECRUITER_PYTHON_BIN || path.join(root, '.venv', 
 const hostTool = path.join(root, 'runtime', 'rn', 'host_tool.py');
 const dedupeDir = process.env.RECRUITER_DEDUPE_DIR || path.join(root, 'workspace', '.im-dedupe');
 const dedupe = new FileDedupeStore({ dir: dedupeDir });
-
 const runtime = new CodexCliRuntime({
   bin: process.env.CODEX_BIN || 'codex',
   codexHome: process.env.CODEX_HOME,
@@ -57,6 +56,10 @@ function hostWorkflow(envelope, progress) {
       env: {
         ...process.env,
         PYTHONPATH: path.join(root, 'runtime'),
+        // Python 必须按 UTF-8 输出：Windows 上默认按控制台代码页（GBK）编码 stdout，
+        // 桥接按 UTF-8 解码后整条回复都会变成乱码。
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
         CODEXHARNESS_PROGRESS_FILE: progressFile,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -76,7 +79,11 @@ function hostWorkflow(envelope, progress) {
     };
     const poller = setInterval(() => { void drain(); }, 500);
     child.stdout.on('data', d => { out += d; });
-    child.stderr.on('data', d => { err += d; });
+    child.stderr.on('data', d => {
+      err += d;
+      // 子进程的运维诊断必须进 journalctl；只留在 err 里等于线上无从判因。
+      process.stderr.write(d);
+    });
     child.on('close', async () => {
       clearInterval(poller);
       await drain();
@@ -137,9 +144,37 @@ await channel.start(async (envelope, responder) => {
     try {
       if (progress?.start) cardStarted = Boolean(await progress.start({ stage: 'HIRING_WORKFLOW', text: '正在处理你的招聘需求…' }));
       const result = await hostWorkflow(envelope, progress);
-      const text = result.message || (result.error ? `处理失败：${result.error}` : '已处理。');
+      if (result.error) {
+        // 内部错误只进 journalctl，不回给用人经理（避免泄露后端实现细节）。
+        console.error(`[workflow] msg=${mid} error=${result.error}`);
+      }
+      let text = result.message || (result.error ? '抱歉，这次没能完成处理，请稍后重试。' : '已处理。');
+      const followUpMessage = result.follow_up_message || '';
+      if (result.resume_delivery) {
+        let directSubmitted = false;
+        if (typeof responder.sendFile === 'function') {
+          try {
+            const receipt = await responder.sendFile({ filePath: result.resume_delivery.file_path, filename: result.resume_delivery.filename });
+            // The adapter returns the DingTalk business response. Require an
+            // explicit acknowledgement; absence is not evidence of submission.
+            const code = receipt?.errcode ?? receipt?.errCode ?? receipt?.code;
+            directSubmitted = Boolean(receipt && receipt.success !== false
+              && code != null && ['0', 'ok'].includes(String(code).toLowerCase()));
+            if (!directSubmitted) console.error('[resume-delivery] submission not acknowledged');
+          } catch {
+            // Provider errors may contain paths, tokens or resume metadata.
+            console.error('[resume-delivery] submission failed');
+          }
+        }
+        // Never publish original resumes through an unauthenticated static URL.
+        // An accepted API submission does not prove recipient receipt.
+        text += directSubmitted
+          ? ' 已提交钉钉文件投递。'
+          : ' 已选中该候选人，但简历暂未送达，请稍后重试或联系 HR 安全获取。';
+      }
       if (cardStarted) await finishProgress(responder, progress, text);
       else await responder.reply?.(text);
+      if (followUpMessage) await responder.reply?.(followUpMessage);
       console.log(`[reply] source=hiring-workflow msg=${mid} state=${result.state || '-'} request=${result.request_id || '-'}`);
       return;
     } catch (error) {

@@ -11,6 +11,8 @@ UMask=0077
 WorkingDirectory=/opt/recruiter-na/app
 EnvironmentFile=/etc/recruiter-na/recruiter-na.env
 Environment=PYTHONPATH=/opt/recruiter-na/app/runtime
+Environment=PYTHONUTF8=1
+Environment=PYTHONIOENCODING=utf-8
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/node /opt/recruiter-na/app/im/recruiter-na.mjs
 Restart=always

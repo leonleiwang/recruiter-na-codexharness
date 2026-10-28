@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
 
-from rn.resume_db import JsonResumeStore, parse_text_resume, sha256_of_text  # noqa: E402
+from rn.resume_screening.parsing.resume_db import JsonResumeStore, parse_text_resume, sha256_of_text  # noqa: E402
 from rn.mail_watch import MailIntake  # noqa: E402
 
 
@@ -35,6 +35,12 @@ def test_ingest_dedupe(tmp_path):
     dup = parse_text_resume(RESUME_A, source="email")
     store.upsert(dup)
     assert store.stats()["total"] == 1
+
+
+def test_parse_text_resume_uses_a_filename_prefix_as_candidate_name():
+    resume = parse_text_resume("医学检验技术\n检验科工作经历", meta={"filename": "李静文_驻点检验技术员.pdf"})
+
+    assert resume["name"] == "李静文"
 
 
 def test_review_required_without_routing(tmp_path):

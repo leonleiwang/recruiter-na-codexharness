@@ -6,7 +6,7 @@ Recruiter-Na is an open-source DingTalk recruitment assistant for hiring manager
 
 It helps a hiring manager start or continue only their own hiring request, and view progress for only their own requests. For the currently supported inspection-technician policies, its screening path is `Resume Facts → LLM Semantic Evidence → Evidence Grounding → deterministic Candidate Decision`.
 
-Documentation: [usage guide](USAGE.md) and [Candidate Decision contract](docs/RECRUITMENT_DECISION_V5.md).
+Documentation: [usage guide](USAGE.md), [Candidate Decision contract](docs/RECRUITMENT_DECISION_V5.md), and [resume parsing + capability/experience/trait matching](runtime/rn/resume_screening/README.md).
 
 ## Developer preview
 
@@ -51,7 +51,7 @@ After supplying the authorized private dependencies described above, run the ful
 bash scripts/verify.sh
 ```
 
-The active service uses `screening_v5.py`; legacy scorers remain only for regression and rollback analysis and are not loaded by the public hiring-manager path. Candidate Decision is currently supported only where an approved policy exists; unsupported roles must not fall back to numerical candidate scoring.
+Resume parsing and screening code is grouped in `runtime/rn/resume_screening/` (`parsing/`, `scoring/`, `decision/`; see its `README.md` for the module map). The active service uses `resume_screening/decision/screening_v5.py`; legacy scorers under `resume_screening/scoring/` remain only for regression and rollback analysis and are not loaded by the public hiring-manager path. Candidate Decision is currently supported only where an approved policy exists; unsupported roles must not fall back to numerical candidate scoring.
 
 ## Citation
 

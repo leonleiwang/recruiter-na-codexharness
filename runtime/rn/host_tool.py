@@ -16,11 +16,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "runtime"))
 
-from rn.hiring_analyzer_v4 import HiringIntentAnalyzer
 from rn.hiring_requests import HiringRequestRepository
 from rn.hiring_workflow_v5 import HiringManagerWorkflow
-from rn.repositories import JDRepository, ProfileRepository, ResumeRepository
-from rn.screening_v5 import HiringDecisionScreeningService
+from rn.repositories import ProfileRepository, ResumeRepository
+from rn.resume_delivery import SelectedResumeDeliveryService
+from rn.resume_screening.decision.screening_v5 import HiringDecisionScreeningService
+from rn.resume_screening.jd.intake import HiringIntentAnalyzer
+from rn.resume_screening.jd.templates import JDRepository
 
 
 def _json(value: Any) -> None:
@@ -73,6 +75,7 @@ def _workflow_handle(argv: list[str]) -> dict[str, Any]:
         jd_repo=jd_repo,
         resume_repo=resume_repo,
         analyzer=HiringIntentAnalyzer.from_env(),
+        delivery_service=SelectedResumeDeliveryService(resume_repo),
         screening_service=HiringDecisionScreeningService(
             resume_repo=resume_repo,
             profile_repo=profile_repo,

@@ -1,6 +1,6 @@
 import copy
 
-from rn.evidence_grounding import repair_decision_grounding, validate_decision_grounding
+from rn.resume_screening.decision.evidence_grounding import repair_decision_grounding, validate_decision_grounding
 
 
 FACTS = {

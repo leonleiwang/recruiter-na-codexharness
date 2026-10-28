@@ -9,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime"))
 
-from rn.screening_pipeline_v3 import screen_candidate_v3  # noqa: E402
-from rn.semantic_evidence_evaluator import SemanticEvidenceEvaluator  # noqa: E402
+from rn.resume_screening.scoring.screening_pipeline_v3 import screen_candidate_v3  # noqa: E402
+from rn.resume_screening.decision.semantic_evidence_evaluator import SemanticEvidenceEvaluator  # noqa: E402
 
 job = {
     "id": "SMOKE-JOB",

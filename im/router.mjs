@@ -4,7 +4,7 @@ export async function handleControlCommand(envelope, responder = {}) {
   const text = String(envelope?.text || '').trim();
   if (text !== '/new') return false;
   console.log(`[router] /new msg=${envelope.messageId}`);
-  await responder.reply?.('已开启新会话，请发送你的问题。');
+  await responder.reply?.('请直接发送“我要招一个……”创建新招聘需求；已有需求不会因 /new 被清空。');
   console.log(`[reply] source=router msg=${envelope.messageId}`);
   return true;
 }

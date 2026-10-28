@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-import rn.decision_evidence_evaluator as module
-from rn.decision_evidence_evaluator import DecisionEvidenceEvaluator
-from rn.semantic_evidence_evaluator import EvidenceEvaluationError
+import rn.resume_screening.decision.decision_evidence_evaluator as module
+from rn.resume_screening.decision.decision_evidence_evaluator import DecisionEvidenceEvaluator
+from rn.resume_screening.decision.semantic_evidence_evaluator import EvidenceEvaluationError
 
 
 def _base_env(monkeypatch):

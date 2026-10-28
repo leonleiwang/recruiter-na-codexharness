@@ -1,6 +1,6 @@
 import copy
 
-from rn.scoring_engine_v3 import calc_rq2_continuity, score_candidate
+from rn.resume_screening.scoring.scoring_engine_v3 import calc_rq2_continuity, score_candidate
 
 
 def base_resume():

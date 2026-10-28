@@ -6,7 +6,7 @@ Recruiter-Na 是一个基于 Codex Harness、面向用人部门的开源钉钉�
 
 它支持用人部门发起或继续**本人**的招聘需求，并查看**本人**需求的进展。对于当前已支持的检验技术员 Policy，筛选链路为：`简历事实 → LLM 语义证据 → 证据 Grounding → 确定性 Candidate Decision`。
 
-文档：[使用说明](USAGE.md) 与 [Candidate Decision 合同](docs/RECRUITMENT_DECISION_V5.md)。
+文档：[使用说明](USAGE.md)、[Candidate Decision 合同](docs/RECRUITMENT_DECISION_V5.md) 与 [简历解析 + 能力/经验/特质匹配](runtime/rn/resume_screening/README.md)。
 
 ## 开发者预览
 
@@ -51,7 +51,7 @@ PYTHONPATH=runtime .venv/bin/python -m pytest tests/test_secrets_and_privacy.py 
 bash scripts/verify.sh
 ```
 
-活跃服务使用 `screening_v5.py`；legacy scorer 仅保留给回归和回滚分析，公开的用人部门链路不会加载它们。Candidate Decision 仅在存在已获批准 Policy 的岗位上执行；未支持岗位不得回退到数值化候选人评分。
+简历解析与筛选代码集中在 `runtime/rn/resume_screening/`（`parsing/`、`scoring/`、`decision/` 三层，模块地图见其目录下 `README.md`）。活跃服务使用 `resume_screening/decision/screening_v5.py`；`resume_screening/scoring/` 下的 legacy scorer 仅保留给回归和回滚分析，公开的用人部门链路不会加载它们。Candidate Decision 仅在存在已获批准 Policy 的岗位上执行；未支持岗位不得回退到数值化候选人评分。
 
 ## 引用
 

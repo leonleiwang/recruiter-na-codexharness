@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from rn.semantic_evidence_evaluator import (
+from rn.resume_screening.decision.semantic_evidence_evaluator import (
     EvidenceEvaluationError,
     SemanticEvidenceEvaluator,
     extract_response_text,
@@ -53,7 +53,7 @@ def test_transport_failure_raises_and_never_returns_keyword_fallback():
 
 
 def test_retry_transport_retries_retryable_errors_then_succeeds():
-    from rn.semantic_evidence_evaluator import post_json_with_retry
+    from rn.resume_screening.decision.semantic_evidence_evaluator import post_json_with_retry
     attempts = []
     sleeps = []
     def once(url, headers, payload, timeout):
@@ -71,7 +71,7 @@ def test_retry_transport_retries_retryable_errors_then_succeeds():
 
 
 def test_retry_transport_does_not_retry_non_retryable_contract_error():
-    from rn.semantic_evidence_evaluator import post_json_with_retry
+    from rn.resume_screening.decision.semantic_evidence_evaluator import post_json_with_retry
     attempts = []
     def once(*_args):
         attempts.append(1)

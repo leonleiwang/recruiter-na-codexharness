@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from rn.screening_v4 import HiringScreeningService, build_jd_contract_v4, score_candidate_v4
+from rn.resume_screening.scoring.screening_v4 import HiringScreeningService, build_jd_contract_v4, score_candidate_v4
 
 
 RESUME = {

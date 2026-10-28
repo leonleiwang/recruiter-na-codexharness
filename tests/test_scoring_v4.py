@@ -1,4 +1,4 @@
-from rn.scoring_v4 import combine_component_scores
+from rn.resume_screening.scoring.scoring_v4 import combine_component_scores
 
 
 def test_profile_and_jd_use_40_60_blend_and_outer_30_70():

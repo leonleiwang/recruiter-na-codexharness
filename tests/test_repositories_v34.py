@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from rn.repositories import JDRepository, ProfileRepository
+from rn.repositories import ProfileRepository
+from rn.resume_screening.jd.templates import JDRepository
 
 
 def test_profile_repository_reads_only_verified_14_profile_library():

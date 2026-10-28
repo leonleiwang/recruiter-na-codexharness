@@ -1,7 +1,7 @@
 # Resume Repository Contract
 
 Production resume authority is MySQL. Recruiter-Na reads the existing tables
-used by `runtime/rn/resume_mysql.py`, including `candidate_resume` and its
+used by `runtime/rn/resume_screening/parsing/resume_mysql.py`, including `candidate_resume` and its
 associated candidate-information / mail-metadata tables when available.
 
 Connection values are injected only through environment variables:

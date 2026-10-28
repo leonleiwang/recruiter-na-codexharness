@@ -1,4 +1,4 @@
-from rn.candidate_decision_v5 import decide_candidate, recommendation_order_key
+from rn.resume_screening.decision.candidate_decision_v5 import decide_candidate, recommendation_order_key
 
 
 CRITERIA = {
@@ -13,7 +13,7 @@ CRITERIA = {
 }
 
 
-def assessment(*, education="matched", certification="valid", location="match", red="clear", c1="satisfied", c2="satisfied", c3="unknown", c4="unknown"):
+def assessment(*, education="matched", certification="valid", location="match", red="clear", c1="satisfied", c2="satisfied", c2_status=None, c3="unknown", c4="unknown"):
     def row(cid, result, evidence_status=None):
         if evidence_status is None:
             evidence_status = "confirmed" if result in {"satisfied", "not_satisfied"} else "none"
@@ -34,7 +34,7 @@ def assessment(*, education="matched", certification="valid", location="match", 
             "location": {"status": location, "evidence": [], "reasoning_summary": location},
         },
         "red_line_assessments": [{"red_line_id": "RL01", "status": red, "evidence": [], "reasoning_summary": red}],
-        "criteria_assessments": [row("C01", c1), row("C02", c2), row("C03", c3), row("C04", c4)],
+        "criteria_assessments": [row("C01", c1), row("C02", c2, c2_status), row("C03", c3), row("C04", c4)],
     }
 
 
@@ -61,8 +61,26 @@ def test_hard_gate_not_satisfied_vetoes_but_unknown_only_verifies():
     assert any(x["item"] == "必须罗氏平台经验" for x in unknown["needs_verification"])
 
 
-def test_resume_evidence_not_satisfied_is_verification_not_veto():
-    result = decide_candidate(CRITERIA, assessment(c2="not_satisfied"))
+def test_resume_evidence_confirmed_not_satisfied_vetoes_a_required_criterion():
+    """业务标注要求：必须项若被简历明确证伪，必须否决（v5 曾漏判此类候选人）。"""
+    result = decide_candidate(CRITERIA, assessment(c2="not_satisfied", c2_status="confirmed"))
+
+    assert result["decision"] == "fail"
+    assert any(v["rule"] == "resume_evidence_confirmed_not_satisfied" for v in result["veto_items"])
+
+
+def test_resume_evidence_not_satisfied_without_confirmed_evidence_only_verifies():
+    """证据不完整（partial）时不得否决，只能进待核实，避免误杀。"""
+    result = decide_candidate(CRITERIA, assessment(c2="not_satisfied", c2_status="partial"))
+
+    assert result["decision"] == "pass"
+    assert not result["veto_items"]
+    assert any(x["item"] == "检验科经验" for x in result["needs_verification"])
+
+
+def test_resume_evidence_unknown_still_only_verifies():
+    result = decide_candidate(CRITERIA, assessment(c2="unknown"))
+
     assert result["decision"] == "pass"
     assert not result["veto_items"]
     assert any(x["item"] == "检验科经验" for x in result["needs_verification"])
@@ -95,3 +113,40 @@ def test_recommendation_order_is_grouped_without_exposed_score():
     )
     assert [x[0] for x in ordered] == ["C", "A", "B", "D"]
     assert all("score" not in key for key in ready_two_prefs)
+
+
+def test_recommendation_order_prefers_more_matched_tags():
+    """排序主轴是命中标签数：命中多的排前面，且仍不引入数值分。"""
+    few_tags = {"decision": "pass", "needs_verification": [], "preference_signals": [{}, {}],
+                "confirmed_resume_evidence_count": 9, "matched_tag_count": 4}
+    many_tags = {"decision": "pass", "needs_verification": [{"item": "工作地点"}], "preference_signals": [],
+                 "confirmed_resume_evidence_count": 1, "matched_tag_count": 13}
+
+    ordered = sorted([("few", few_tags, 0), ("many", many_tags, 1)],
+                     key=lambda x: recommendation_order_key(x[1], x[2]))
+
+    assert [x[0] for x in ordered] == ["many", "few"]
+
+
+def test_matched_tag_count_uses_all_active_policy_labels_without_affecting_decision():
+    criteria = {
+        **CRITERIA,
+        "criteria": [
+            *CRITERIA["criteria"],
+            {"criterion_id": "C05", "name": "标签五", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C06", "name": "标签六", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C07", "name": "标签七", "decision_mode": "resume_evidence"},
+        ],
+    }
+    doc = assessment(c3="satisfied", c4="satisfied")
+    doc["criteria_assessments"].extend([
+        {"criterion_id": "C05", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "五", "source_path": "raw_text"}]},
+        {"criterion_id": "C06", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "六", "source_path": "raw_text"}]},
+        {"criterion_id": "C07", "criterion_result": "unknown", "evidence_status": "none", "evidence": []},
+    ])
+
+    result = decide_candidate(criteria, doc)
+
+    assert result["matched_tag_count"] == 9
+    assert result["applicable_tag_count"] == 10
+    assert result["decision"] == "pass"

@@ -16,6 +16,63 @@
     "检验技术员（应届）",
     "检验技术员（社招）"
   ],
+  "profile_criterion_overrides": {
+    "PROFILE-91603AA55F6E": {
+      "检验科经验": {
+        "level": "优先",
+        "decision_mode": "preference",
+        "description": "有医院检验科或第三方实验室实习/见习经历，接触过标本接收、上机检测或质控操作等基础环节为加分项；无经验者可通过公司带教体系从零培养，不作为否决条件。",
+        "evidence_hints": "提及检验科/实验室实习或见习、标本接收、上机检测、质控操作；没有实习经历不构成不满足。",
+        "override_reason": "应届画像口径：实习/见习即可，无经验可带教培养，不得据此否决"
+      },
+      "问题分析与解决能力": {
+        "applicable": false,
+        "override_reason": "应届画像未设该能力：入职初期由带教老师判定根因，不作为应届评估判据"
+      },
+      "试剂耗材管理能力": {
+        "applicable": false,
+        "override_reason": "应届画像未设该能力：要素管理由资深技术员承担"
+      },
+      "试剂管理经验": {
+        "applicable": false,
+        "override_reason": "应届画像未设该经历要求"
+      },
+      "人员带教经验": {
+        "applicable": false,
+        "override_reason": "应届画像未设带教经历要求"
+      },
+      "责任心": {
+        "applicable": false,
+        "override_reason": "应届画像特质为抗压/细心/持续学习/积极主动，不含责任心"
+      }
+    },
+    "PROFILE-412167F2937C": {
+      "检验科经验": {
+        "level": "必须",
+        "decision_mode": "resume_evidence",
+        "description": "≥1年医院检验科或独立医学实验室(ICL)/第三方医学检验所检验工作经历",
+        "evidence_hints": "机构名称含检验科/ICL/医学检验所/第三方检验/迪安/金域/艾迪康等",
+        "override_reason": "社招画像口径：≥1年为必须项，简历明确不足即否决"
+      },
+      "专业理论知识": {
+        "applicable": false,
+        "override_reason": "社招画像不单独考察理论，改由实操经历与问题分析能力体现"
+      },
+      "专业背景与项目经验": {
+        "applicable": false,
+        "override_reason": "社招画像经历为检验科/试剂管理/人员带教，专业背景由学历硬性要求判定"
+      },
+      "持续学习": {
+        "applicable": false,
+        "override_reason": "社招画像特质为抗压/细心/积极主动/责任心，不含持续学习"
+      },
+      "试剂管理经验": {
+        "description": "3年以上检验试剂管理经验，熟悉试剂领用、库存核对、效期管理与新批次质控比对流程，能在试剂更换时独立完成定标和质控验证，了解室内质控和室间质评基本规范",
+        "evidence_hints": "提及试剂管理年限/领用/库存/效期/定标/质控验证/试剂更换/室间质评",
+        "override_reason": "社招画像原文年限口径：3年以上"
+      }
+    }
+  },
   "description": "负责常规标本（涵盖临检、免疫、分子等多学科）的接收、检测、结果审核与报告发布，执行室内质控与室间质评，承担要素管理及新员工带教工作，确保检测结果准确、及时交付。",
   "biz_challenge": [
     "多学科多项目并行：需同时掌握不同方法学的检测项目，各项目操作流程和判读标准存在差异，要求快速切换和综合判断能力。",
@@ -38,35 +95,56 @@
       "level": "必须",
       "decision_mode": "resume_evidence",
       "description": "严格按标准操作规程执行技术操作，确保每一步操作规范、可追溯、质量可控",
-      "evidence_hints": "提及SOP/操作规程/标准化操作/操作规范；实验室/检验科工作经历"
+      "evidence_hints": "提及SOP/操作规程/标准化操作/操作规范；实验室/检验科工作经历",
+      "criterion_id": "C01"
     },
     {
       "name": "问题分析与解决能力",
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "快速辨识问题根因，制定对策，迅速响应突发负面状况",
-      "evidence_hints": "提及排查/根因分析/异常处理/质控失控/结果异常追溯/临床投诉处理"
+      "evidence_hints": "提及排查/根因分析/异常处理/质控失控/结果异常追溯/临床投诉处理",
+      "criterion_id": "C02"
     },
     {
       "name": "快速学习能力",
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "快速理解并掌握新的操作流程、仪器使用和检测项目，能在短时间内通过带教达到独立上手水平",
-      "evidence_hints": "提及新人期快速上手/多项目学习/自写操作清单/举一反三"
+      "evidence_hints": "提及新人期快速上手/多项目学习/自写操作清单/举一反三",
+      "criterion_id": "C03"
     },
     {
       "name": "沟通表达能力",
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "准确传达信息，理解他人诉求，建立良好的交流氛围",
-      "evidence_hints": "提及交接沟通/临床沟通/跨部门协作/异常信息传递"
+      "evidence_hints": "提及交接沟通/临床沟通/跨部门协作/异常信息传递",
+      "criterion_id": "C04"
     },
     {
       "name": "团队合作能力",
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "有效沟通分工，担责互信，将团队成败置于个人利益前",
-      "evidence_hints": "提及排班协作/帮助同事/高峰期协调/团队配合"
+      "evidence_hints": "提及排班协作/帮助同事/高峰期协调/团队配合",
+      "criterion_id": "C05"
+    },
+    {
+      "criterion_id": "C13",
+      "name": "试剂耗材管理能力",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "掌握检验试剂的领用、库存核对、效期管理及新批次质控比对方法，能在试剂更换时独立完成定标和质控验证；了解室内质控和室间质评的基本流程与失控处理规范",
+      "evidence_hints": "提及试剂领用/库存核对/效期管理/定标/新批次质控比对/试剂更换验证/室间质评"
+    },
+    {
+      "criterion_id": "C14",
+      "name": "专业理论知识",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "掌握基础检验学、免疫学、生物化学等理论知识，能将理论与实际操作结合理解各项目原理",
+      "evidence_hints": "提及检验学/免疫学/生物化学等课程成绩、专业理论、项目原理、实验原理；仅凭学历专业不得推断已掌握"
     }
   ],
   "experiences": [
@@ -75,21 +153,32 @@
       "level": "必须",
       "decision_mode": "resume_evidence",
       "description": "≥1年医院检验科或独立医学实验室(ICL)/第三方医学检验所检验工作经历",
-      "evidence_hints": "机构名称含检验科/ICL/医学检验所/第三方检验/迪安/金域/艾迪康等"
+      "evidence_hints": "机构名称含检验科/ICL/医学检验所/第三方检验/迪安/金域/艾迪康等",
+      "criterion_id": "C06"
     },
     {
       "name": "试剂管理经验",
       "level": "优先",
       "decision_mode": "preference",
       "description": "掌握检验试剂的领用、库存核对、效期管理及新批次质控比对方法",
-      "evidence_hints": "提及试剂管理/库存/定标/质控验证/试剂更换"
+      "evidence_hints": "提及试剂管理/库存/定标/质控验证/试剂更换",
+      "criterion_id": "C07"
     },
     {
       "name": "人员带教经验",
       "level": "优先",
       "decision_mode": "preference",
       "description": "能按带教计划指导新员工或实习生掌握基础操作技能和审核要点",
-      "evidence_hints": "提及带教/培训/指导新人/实习生管理"
+      "evidence_hints": "提及带教/培训/指导新人/实习生管理",
+      "criterion_id": "C08"
+    },
+    {
+      "criterion_id": "C15",
+      "name": "专业背景与项目经验",
+      "level": "优先",
+      "decision_mode": "preference",
+      "description": "医学检验技术或相关专业背景（大专及以上即满足硬性要求，本科及以上为加分），具备专业课程实验或项目经历，理论上具备检验士/师职称报考资格",
+      "evidence_hints": "提及医学检验技术/临床医学/生物技术等专业、专业课程实验、毕业项目、课题；学历硬性要求与职称报考资格由 hard_filters 判定，本条只做加分"
     }
   ],
   "traits": [
@@ -98,28 +187,40 @@
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "在体检季等高峰期间样本量激增、连续加班的情况下保持操作稳定性和结果准确性",
-      "evidence_hints": "提及急诊/高峰期/大批量标本/TAT压力/加班/高强度工作"
+      "evidence_hints": "提及急诊/高峰期/大批量标本/TAT压力/加班/高强度工作",
+      "criterion_id": "C09"
     },
     {
       "name": "细心",
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "在多项目并行操作中严格核对标本信息与条码一致性，对异常结果保持敏感",
-      "evidence_hints": "提及核对/复核/审核/质控/异常识别/标本信息核对"
+      "evidence_hints": "提及核对/复核/审核/质控/异常识别/标本信息核对",
+      "criterion_id": "C10"
     },
     {
       "name": "责任心",
       "level": "必须",
       "decision_mode": "interview_verify",
       "description": "对发出的每一份报告负责，遇到不确定的结果不侥幸放过、不推给下一班次",
-      "evidence_hints": "提及独立负责/独立值班/报告审核/溯源确认/不推诿"
+      "evidence_hints": "提及独立负责/独立值班/报告审核/溯源确认/不推诿",
+      "criterion_id": "C11"
     },
     {
       "name": "积极主动",
       "level": "优先",
       "decision_mode": "preference",
       "description": "不被动等待指令，主动发现流程中的效率瓶颈并提出改进建议",
-      "evidence_hints": "提及改进建议/流程优化/主动承担/额外职责/自学新项目"
+      "evidence_hints": "提及改进建议/流程优化/主动承担/额外职责/自学新项目",
+      "criterion_id": "C12"
+    },
+    {
+      "criterion_id": "C16",
+      "name": "持续学习",
+      "level": "必须",
+      "decision_mode": "interview_verify",
+      "description": "主动复盘操作差错与异常案例，通过自我管理方式持续补充理论与技能，不依赖被动带教",
+      "evidence_hints": "提及自学/复盘/总结经验/主动学习新项目/记录操作要点/举一反三"
     }
   ],
   "retrieval_queries": [
@@ -127,5 +228,15 @@
     "医学检验",
     "检验科",
     "检验"
-  ]
+  ],
+  "profile_hard_filter_overrides": {
+    "PROFILE-91603AA55F6E": {
+      "certification": "应届生具备检验士/师报考资格即可进入推荐；尚未报名、未持证不因此否决，报考资格需核实",
+      "certification_accepted_statuses": [
+        "valid",
+        "pending_exam",
+        "eligible_to_apply"
+      ]
+    }
+  }
 }

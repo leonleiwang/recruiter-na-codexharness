@@ -29,6 +29,38 @@ RECRUITER_DECISION_WORKERS=3
 
 `RECRUITER_SCORING_WORKERS` is no longer an active runtime setting. The v5 upgrade script only reads it once as a migration source if `RECRUITER_DECISION_WORKERS` does not yet exist.
 
+## Required environment for selected-resume delivery
+
+A selected candidate's original resume is delivered only when the operator has
+configured the read-only source roots. Without them the delivery service fails
+explicitly with `RESUME_SOURCE_ROOTS_NOT_CONFIGURED` (visible in
+`journalctl -u recruiter-na`), and the hiring manager only sees the safe
+"resume not ready" wording.
+
+```text
+RECRUITER_RESUME_SOURCE_ROOTS=/path/to/resume-originals   # ':'-separated; empty disables delivery
+RECRUITER_RESUME_MAX_BYTES=20971520
+```
+
+Each delivered resume must resolve through the resume backend's
+`source_file_path` to a regular file inside one of those roots. Delivery uses the
+DingTalk file API only. An explicit successful business response means submission,
+not recipient receipt. Missing capability, errors or unacknowledged responses
+produce a safe retry/contact-HR message; no static fallback is generated.
+Legacy `RECRUITER_RESUME_URL_BASE` / `RECRUITER_RESUME_URL_DIR` settings are ignored.
+Do not configure a public static mapping for original resumes.
+
+Historical links are not revoked by upgrading code. Follow the operator-only,
+default-dry-run [legacy exposure handling checklist](PR1_LEGACY_RESUME_LINKS.md).
+Do not delete business data during deployment.
+
+Optional DingTalk progress-card settings: `DINGTALK_AI_CARD_TEMPLATE_ID`,
+`DINGTALK_PROGRESS_CARD`, `DINGTALK_PROGRESS_THROTTLE_MS`.
+
+The enterprise cloud contact-center (Tencent CCC) outbound call flow is **not
+integrated**. The workflow records a contact request and states that no call or
+recording will be placed. Do not describe that capability as available.
+
 ## Product smoke
 
 Use a real/authorized hiring-manager test account.

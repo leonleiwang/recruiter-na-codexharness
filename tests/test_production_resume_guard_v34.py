@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from rn.repositories.resume_repository import ResumeRepository
+from rn.resume_screening.parsing.resume_repository import ResumeRepository
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,6 +18,6 @@ def test_production_json_backend_is_fail_closed(monkeypatch):
 
 
 def test_dev_json_fixture_is_not_workspace_resume_db(monkeypatch):
-    src = (ROOT / 'runtime/rn/repositories/resume_repository.py').read_text(encoding='utf-8')
+    src = (ROOT / 'runtime/rn/resume_screening/parsing/resume_repository.py').read_text(encoding='utf-8')
     assert 'workspace/resume_db.json' not in src
     assert 'data/dev/resume_db.fixture.json' in src

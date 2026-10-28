@@ -14,8 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from rn.criteria_adapter_v5 import load_inspection_technician_policy
-from rn.resume_db import JsonResumeStore, ResumeHttpBackend, parse_text_resume, sha256_of_bytes
+from rn.resume_screening.decision.criteria_adapter_v5 import load_inspection_technician_policy
+from rn.resume_screening.parsing.resume_db import JsonResumeStore, ResumeHttpBackend, parse_text_resume, sha256_of_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = str(ROOT / "data" / "dev" / "resume_db.fixture.json")
@@ -26,11 +26,15 @@ def _store(args: argparse.Namespace) -> Any:
     if args.backend == "http":
         return ResumeHttpBackend(args.http_url)
     if args.backend == "mysql":
-        from rn.resume_mysql import ResumeMySQLBackend
+        from rn.resume_screening.parsing.resume_mysql import ResumeMySQLBackend
         return ResumeMySQLBackend(
             host=args.mysql_host, port=args.mysql_port, user=args.mysql_user,
             password=args.mysql_password, database=args.mysql_database,
         )
+    if args.backend == "jsonl":
+        # Real parsed-resume archive; read-only, safe outside development.
+        from rn.resume_screening.parsing.resume_jsonl import ResumeJsonlBackend
+        return ResumeJsonlBackend()
     if os.environ.get("APP_ENV", "development").lower() == "production":
         raise RuntimeError("PRODUCTION_JSON_RESUME_DB_FORBIDDEN")
     return JsonResumeStore(Path(db))
@@ -88,7 +92,7 @@ def _dev_search(rows: list[dict[str, Any]], q: str = "", degree: str | None = No
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rn", description="Recruiter-Na v5 Candidate Decision support CLI")
     p.add_argument("--db", default=DEFAULT_DB, help="开发测试 JSON fixture；生产禁用")
-    p.add_argument("--backend", choices=["json", "http", "mysql"], default=os.environ.get("RN_BACKEND", "mysql"))
+    p.add_argument("--backend", choices=["json", "jsonl", "http", "mysql"], default=os.environ.get("RN_BACKEND", "mysql"))
     p.add_argument("--http-url", default=os.environ.get("RESUME_DB_API_URL", "http://127.0.0.1:8787"))
     p.add_argument("--mysql-host", default=os.environ.get("MYSQL_HOST", "127.0.0.1"))
     p.add_argument("--mysql-port", type=int, default=int(os.environ.get("MYSQL_PORT", "3306")))
@@ -103,6 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("ingest", help="入库文件或目录（不生成候选人分数）")
     sp.add_argument("target")
     sp.add_argument("--source", default="upload")
+    sp.add_argument("--original-root", default=None, help="MySQL 原件所在受控根目录；生产入库必须指定")
 
     sp = sub.add_parser("search", help="只读检索候选；仅用于检索，不决定通过/不通过")
     sp.add_argument("--dev-dir", default=None)
@@ -120,6 +125,18 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _criteria_count_by_profile(policy: dict) -> dict[str, int]:
+    """每个标准画像实际参与评估的判据数（policy 是两画像的并集）。"""
+    all_names = [str(x.get("name") or "") for key in ("capabilities", "experiences", "traits")
+                 for x in (policy.get(key) or [])]
+    out: dict[str, int] = {}
+    for profile_id, overrides in (policy.get("profile_criterion_overrides") or {}).items():
+        excluded = {name for name, patch in (overrides or {}).items()
+                    if isinstance(patch, dict) and patch.get("applicable") is False}
+        out[profile_id] = len([n for n in all_names if n not in excluded])
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.cmd == "policy":
@@ -130,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             "role": policy.get("role_name"),
             "supported_profile_ids": policy.get("supported_profile_ids"),
             "criteria_count": sum(len(policy.get(k) or []) for k in ("capabilities", "experiences", "traits")),
+            "criteria_by_profile": _criteria_count_by_profile(policy),
             "decision_model": "PASS / VERIFY / FAIL; no numeric candidate score",
         }, ensure_ascii=False, indent=2))
         return 0
@@ -142,10 +160,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "ingest":
         from rn.mail_watch import _extract_docx_or_pdf
         target = Path(args.target)
-        files = sorted(target.iterdir()) if target.is_dir() else [target]
+        files = (
+            sorted(
+                (x for x in target.rglob("*") if x.is_file() and "__MACOSX" not in x.parts and not x.name.startswith("._")),
+                key=lambda x: str(x),
+            )
+            if target.is_dir() else [target]
+        )
         count = 0
+        skipped = 0
         for f in files:
             if not f.is_file() or f.suffix.lower() not in (".txt", ".md", ".pdf", ".docx"):
+                continue
+            if args.backend == "mysql":
+                if not args.original_root:
+                    raise RuntimeError("MYSQL_INGEST_REQUIRES_ORIGINAL_ROOT")
+                try:
+                    outcome = store.ingest_original(f, source_root=args.original_root, fetched_by=args.source)
+                except ValueError as exc:
+                    print(f"skip {exc}: {f.name}", file=sys.stderr)
+                    skipped += 1
+                    continue
+                print(f"{outcome['status']} {outcome['id']} {outcome['filename']}")
+                count += 1
                 continue
             data = f.read_bytes()
             text = data.decode("utf-8", errors="replace") if f.suffix.lower() in (".txt", ".md") else _extract_docx_or_pdf(f)
@@ -157,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
             store.upsert(resume)
             print(f"ingested {resume['resume_id']} {resume.get('name', '')}")
             count += 1
-        print(f"done: {count}")
+        print(f"done: {count}; skipped: {skipped}")
         return 0
 
     if args.cmd == "search":
