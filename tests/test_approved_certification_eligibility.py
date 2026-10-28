@@ -101,3 +101,13 @@ def test_social_reagent_experience_remains_preference():
     c = criteria(SOCIAL)
     row = next(row for row in c['criteria'] if row['name'] == '试剂管理经验')
     assert row['level'] == '优先' and row['decision_mode'] == 'preference'
+
+
+@pytest.mark.parametrize('status, resolved', [('AMBIGUOUS', False), ('NO_MATCH', False), ('MATCHED', False), ('AMBIGUOUS', True), ('NO_MATCH', True)])
+def test_unconfirmed_or_unresolved_profile_cannot_grant_graduate_exception(status, resolved):
+    req = {'request_id': 'SYNTHETIC', 'request': {'fields': {'position_title': '检验技术员'},
+           'profile_match': {'status': status, 'profile_id': GRADUATE}}}
+    profile = SimpleNamespace(profile_id=GRADUATE, name='检验技术员') if resolved else None
+    c = build_actual_criteria(req, profile)
+    assert 'eligible_to_apply' not in c['hard_filters'].get('certification_accepted_statuses', [])
+    assert decide_candidate(c, assessment(c), FACTS)['decision'] == 'fail'

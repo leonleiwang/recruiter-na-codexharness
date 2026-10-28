@@ -130,8 +130,11 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
         criteria = remaining
 
     hard_filters = deepcopy(policy.get("hard_filters") or {})
-    # Approved profile-specific eligibility, separate from scored criteria.
-    hard_filters.update(deepcopy((policy.get("profile_hard_filter_overrides") or {}).get(matched_profile_id) or {}))
+    # A residual ID on an ambiguous/unresolved request is not an approved match.
+    resolved_profile_id = str(getattr(profile, "profile_id", "") or "").strip()
+    if (match.get("status") == "MATCHED" and resolved_profile_id
+            and resolved_profile_id == str(match.get("profile_id") or "").strip()):
+        hard_filters.update(deepcopy((policy.get("profile_hard_filter_overrides") or {}).get(resolved_profile_id) or {}))
     hard_filters["location"] = location
     return {
         "schema_version": "5.0",
