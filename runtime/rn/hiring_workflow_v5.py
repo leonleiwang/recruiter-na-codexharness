@@ -39,11 +39,12 @@ def _contact_reference(text: str, contact: dict[str, Any]) -> bool:
 
 BASIC_REQUIRED = ["position_title", "department", "headcount", "location", "salary_range", "urgency", "extra_hard_requirements"]
 NO_PROFILE_REQUIRED = ["core_responsibilities", "hard_requirements", "key_experience_skills", "bonus_points"]
-ACTIVE_INPUT_STATUSES = {"DRAFT", "JD_READY", "SCREENING", "CANDIDATES_READY", "REVIEWING_CANDIDATES", "WAITING_HR_SOURCING", "NEW_CANDIDATES_AVAILABLE", "PAUSED"}
+ACTIVE_INPUT_STATUSES = {"DRAFT", "JD_READY", "SCREENING", "EVALUATION_PENDING", "CANDIDATES_READY", "REVIEWING_CANDIDATES", "WAITING_HR_SOURCING", "NEW_CANDIDATES_AVAILABLE", "PAUSED"}
 
 STATUS_LABELS = {
     "DRAFT": "需求待补充", "JD_READY": "JD待确认", "SCREENING": "正在筛选",
     "CANDIDATES_READY": "候选人已就绪", "REVIEWING_CANDIDATES": "候选人评审中",
+    "EVALUATION_PENDING": "候选人评估待重试",
     "WAITING_HR_SOURCING": "等待HR寻源", "NEW_CANDIDATES_AVAILABLE": "有新候选人可筛",
     "SELECTED": "已选中候选人", "PAUSED": "已暂停", "CANCELLED": "已取消", "CLOSED": "已关闭",
 }
@@ -82,6 +83,7 @@ INTENT_CLASSIFY_PROMPT = """你是招聘助手意图分类器。根据用户消�
 
 可能的意图（选一个）:
 - next_batch: 想换一批/继续推荐/继续筛选/再筛/再推/不合适/都看看/还有其他人/下一组/还有吗
+- retry_pending: 重试尚未完成/技术失败的候选人评估，或请重新核实这些人
 - select: 选某人/确定了/这个人可以/要这个/就这个
 - start_screen: 开始筛选/开始推荐/确认JD/可以筛选
 - pause: 暂停/挂起/先不招/暂时停
@@ -132,7 +134,7 @@ def _classify_intent_semantic(analyzer: Any, text: str, status: str, title: str,
                                                 missing=str(missing or "无"))
         result = analyzer._call(prompt)
         intent = str(result.get("intent", "")).strip().lower()
-        valid = {"next_batch", "select", "start_screen", "pause", "restart_hiring", "show_progress", "new_hiring", "modify_jd", "resend_resume", "confirm_ccc_contact", "decline_ccc_contact", "restricted", "generic"}
+        valid = {"retry_pending", "next_batch", "select", "start_screen", "pause", "restart_hiring", "show_progress", "new_hiring", "modify_jd", "resend_resume", "confirm_ccc_contact", "decline_ccc_contact", "restricted", "generic"}
         if intent in valid:
             ordinal = result.get("selection_ordinal")
             ordinal = ordinal if isinstance(ordinal, int) and ordinal in {1, 2, 3} else None
@@ -229,7 +231,20 @@ def _numbered_items(rows: Any, limit: int = 4) -> list[str]:
     return [f"{numerals[index]} {item}" for index, item in enumerate(rendered.split("；"))]
 
 
+def _latest_batch(request: dict[str, Any], shown: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ids = (request.get("request") or {}).get("last_batch_candidate_ids")
+    if ids is None:  # old snapshots remain selectable without a data migration
+        return shown[-3:]
+    by_id = {x["candidate_id"]: x for x in shown}
+    return [by_id[cid] for cid in ids if cid in by_id]
+
+
 def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> str:
+    pending = (request.get("request") or {}).get("pending_evaluations") or []
+    notice = (f"另有 {len(pending)} 位候选人因技术问题尚未完成评估，当前评估尚未结束。"
+              "可回复「重试未完成的候选人」，或请 HR 人工核实。") if pending else ""
+    if not batch and pending:
+        return notice
     if not batch:
         return "当前简历库中与这个招聘需求相关、且尚未推荐过的候选人已经全部推荐完了。该需求已进入 **等待 HR 寻源** 状态；后续有新简历进入后可以继续推荐。"
     lines = [f"### 👥 {request.get('position_title') or '当前岗位'}｜本批推荐 {len(batch)} 人", ""]
@@ -254,6 +269,8 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
         if interview:
             lines.append("**面试重点：**\n" + "\n".join(interview))
     lines.append("\n---\n\n不合适可回复 **「换一批」**；看中某人可回复 **「选第1个/第2个/第3个」** 或直接说名字。")
+    if notice:
+        lines.append("\n" + notice)
     return "\n".join(lines)
 
 
@@ -374,7 +391,7 @@ class HiringManagerWorkflow:
         idx, name = _selection_reference("", semantic)
         shown_ids = {str(x) for x in request.get("recommended_candidate_ids") or []}
         shown = [x for x in request.get("ranking") or [] if str(x.get("candidate_id") or "") in shown_ids]
-        latest_batch = shown[-3:]
+        latest_batch = _latest_batch(request, shown)
         if idx is not None and 0 <= idx < len(latest_batch):
             return latest_batch[idx]
         if name:
@@ -441,6 +458,35 @@ class HiringManagerWorkflow:
             return {"handled": True, "request_id": request["request_id"], "state": "DRAFT", "message": _missing_prompt(request)}
         return self._complete_intake(owner, request)
 
+    def _store_evaluations(self, owner: str, request: dict[str, Any], result: dict[str, Any], *, append: bool = False) -> dict[str, Any]:
+        old = {x["candidate_id"]: x for x in (request["request"].get("pending_evaluations") or [])}
+        attempted = set(result.get("attempted_candidate_ids") or [])
+        pending = [x for cid, x in old.items() if cid not in attempted] if append else []
+        for failed in result.get("failures") or []:
+            cid = failed["candidate_id"]
+            pending.append({"candidate_id": cid, "source_resume_ref": failed["source_resume_ref"],
+                            "attempts": int(old.get(cid, {}).get("attempts", 0)) + 1})
+        return self.requests.set_recommendations_for_owner(
+            owner, request["request_id"], result.get("recommendations") or [],
+            resume_count=int(result.get("resume_count") or 0), trace_dir=str(result.get("trace_dir") or ""),
+            pending_evaluations=pending, append=append)
+
+    def _retry_pending(self, owner: str, request: dict[str, Any]) -> dict[str, Any]:
+        pending = request["request"].get("pending_evaluations") or []
+        if not pending:
+            return {"handled": True, "state": request["status"], "candidates": [], "message": "目前没有技术未完成的候选人需要重试。"}
+        try:
+            result = self.screening.screen_request(request, retry_only=pending)
+        except Exception as exc:
+            _diagnose("evaluation_retry_failed", request=request["request_id"], error=str(exc))
+            return {"handled": True, "state": request["status"], "candidates": [],
+                    "message": "重试暂未完成，待核实候选人已保留，可稍后重试或请 HR 人工核实。"}
+        self._store_evaluations(owner, request, result, append=True)
+        batch = self.requests.next_batch(owner, request["request_id"], 3)
+        latest = self.requests.get_for_owner(owner, request["request_id"]) or request
+        return {"handled": True, "request_id": request["request_id"], "state": latest["status"],
+                "candidates": batch, "message": _render_candidates(latest, batch)}
+
     def _screen(self, owner: str, request: dict[str, Any]) -> dict[str, Any]:
         emit_progress("SCREENING", "正在建立候选池并执行 Candidate Decision…")
         self.requests.update_for_owner(owner, request["request_id"], status="SCREENING", event_type="SCREENING_STARTED")
@@ -466,7 +512,7 @@ class HiringManagerWorkflow:
                 "message": "筛选服务当前不可用，你的招聘需求与 JD 已保留。请联系管理员处理后再回复「开始筛选」。",
             }
         recommendations = result.get("recommendations") or []
-        stored = self.requests.set_recommendations_for_owner(owner, request["request_id"], recommendations, resume_count=int(result.get("resume_count") or 0), trace_dir=str(result.get("trace_dir") or ""))
+        stored = self._store_evaluations(owner, request, result)
         batch = self.requests.next_batch(owner, request["request_id"], 3)
         stored = self.requests.get_for_owner(owner, request["request_id"]) or stored
         return {
@@ -488,7 +534,8 @@ class HiringManagerWorkflow:
             total = len(item.get("ranking") or [])
             shown = len(item.get("recommended_candidate_ids") or [])
             label = STATUS_LABELS.get(item["status"], item["status"])
-            extra = ""
+            pending = item["request"].get("pending_evaluations") or []
+            extra = f"｜{len(pending)} 人评估未完成，可重试或请 HR 核实" if pending else ""
             if item["status"] == "WAITING_HR_SOURCING":
                 try:
                     current_count = int(self.resumes.count())
@@ -578,6 +625,9 @@ class HiringManagerWorkflow:
         if intent == "new_hiring":
             return self._start(owner, t, conversation_id)
 
+        if intent == "retry_pending" and req_status in {"CANDIDATES_READY", "REVIEWING_CANDIDATES", "EVALUATION_PENDING", "WAITING_HR_SOURCING"}:
+            return self._retry_pending(owner, request)
+
         # ── 按状态路由 ──
         if req_status == "DRAFT":
             return self._update_draft(owner, request, t)
@@ -592,14 +642,14 @@ class HiringManagerWorkflow:
                 return self._complete_intake(owner, request)
             return {"handled": True, "request_id": request["request_id"], "state": "JD_READY", "message": "JD 已经整理完成，回复 **\"开始筛选\"** 即可开始筛选候选人。"}
 
-        if req_status in {"CANDIDATES_READY", "REVIEWING_CANDIDATES"}:
+        if req_status in {"CANDIDATES_READY", "REVIEWING_CANDIDATES", "EVALUATION_PENDING"}:
             if intent == "select":
                 idx, name = _selection_reference(t, semantic)
                 if idx is not None or name:
                     ranking = request.get("ranking") or []
                     shown_ids = request.get("recommended_candidate_ids") or []
                     shown = [x for x in ranking if x.get("candidate_id") in shown_ids]
-                    target = shown[-3:][idx] if idx is not None and len(shown[-3:]) > idx else next((x for x in shown if name and name in str(x.get("name") or "")), None)
+                    target = _latest_batch(request, shown)[idx] if idx is not None and len(_latest_batch(request, shown)) > idx else next((x for x in shown if name and name in str(x.get("name") or "")), None)
                     if target:
                         selected = self.requests.select_candidate(owner, request["request_id"], str(target["candidate_id"]))
                         result = {"handled": True, "request_id": request["request_id"], "state": selected["status"], "message": f"已记录你选择 **{target.get('name') or target.get('candidate_id')}**。该招聘需求已进入 SELECTED 状态，后续面试/录用仍由 HR 与业务流程确认。"}
@@ -618,7 +668,7 @@ class HiringManagerWorkflow:
                 ranking = request.get("ranking") or []
                 shown_ids = request.get("recommended_candidate_ids") or []
                 shown = [x for x in ranking if x.get("candidate_id") in shown_ids]
-                target = shown[-3:][idx] if idx is not None and len(shown[-3:]) > idx else next((x for x in shown if name and name in str(x.get("name") or "")), None)
+                target = _latest_batch(request, shown)[idx] if idx is not None and len(_latest_batch(request, shown)) > idx else next((x for x in shown if name and name in str(x.get("name") or "")), None)
                 if target:
                     selected = self.requests.select_candidate(owner, request["request_id"], str(target["candidate_id"]))
                     result = {"handled": True, "request_id": request["request_id"], "state": selected["status"], "message": f"已记录你选择 **{target.get('name') or target.get('candidate_id')}**。该招聘需求已进入 SELECTED 状态，后续面试/录用仍由 HR 与业务流程确认。"}
@@ -644,7 +694,7 @@ class HiringManagerWorkflow:
                 result = self.screening.screen_request(request)
                 recs = result.get("recommendations") or []
                 new_ranking = [x for x in recs if x.get("candidate_id") not in old_seen]
-                self.requests.set_recommendations_for_owner(owner, request["request_id"], new_ranking, resume_count=int(result.get("resume_count") or 0), trace_dir=str(result.get("trace_dir") or ""))
+                self._store_evaluations(owner, request, {**result, "recommendations": new_ranking})
                 batch = self.requests.next_batch(owner, request["request_id"], 3)
                 latest = self.requests.get_for_owner(owner, request["request_id"]) or request
                 return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}
@@ -654,7 +704,7 @@ class HiringManagerWorkflow:
                 old_seen = set(request.get("recommended_candidate_ids") or [])
                 result = self.screening.screen_request(request)
                 new_ranking = [x for x in (result.get("recommendations") or []) if x.get("candidate_id") not in old_seen]
-                self.requests.set_recommendations_for_owner(owner, request["request_id"], new_ranking, resume_count=int(result.get("resume_count") or 0), trace_dir=str(result.get("trace_dir") or ""))
+                self._store_evaluations(owner, request, {**result, "recommendations": new_ranking})
                 batch = self.requests.next_batch(owner, request["request_id"], 3)
                 latest = self.requests.get_for_owner(owner, request["request_id"]) or request
                 return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}
@@ -666,7 +716,7 @@ class HiringManagerWorkflow:
             if intent == "next_batch":
                 target_status = request.get("previous_status") or ("REVIEWING_CANDIDATES" if request.get("ranking") else "JD_READY")
                 restored = self.requests.update_for_owner(owner, request["request_id"], status=target_status, event_type="REQUEST_RESUMED")
-                if restored["status"] in {"CANDIDATES_READY", "REVIEWING_CANDIDATES"}:
+                if restored["status"] in {"CANDIDATES_READY", "REVIEWING_CANDIDATES", "EVALUATION_PENDING"}:
                     batch = self.requests.next_batch(owner, restored["request_id"], 3)
                     latest = self.requests.get_for_owner(owner, restored["request_id"]) or restored
                     return {"handled": True, "request_id": restored["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}

@@ -22,6 +22,7 @@ STATUSES = {
     "DRAFT",
     "JD_READY",
     "SCREENING",
+    "EVALUATION_PENDING",
     "CANDIDATES_READY",
     "REVIEWING_CANDIDATES",
     "WAITING_HR_SOURCING",
@@ -283,20 +284,35 @@ class HiringRequestRepository:
         return self.get_for_owner(owner_staff_id, request_id) or {}
 
     def set_recommendations_for_owner(self, owner_staff_id: str, request_id: str, recommendations: list[dict[str, Any]], *, resume_count: int,
-                                      trace_dir: str = "") -> dict[str, Any]:
-        """Persist a v5 recommendation-order snapshot in the legacy ranking_json column."""
-        current = self.get_for_owner(owner_staff_id, request_id)
-        if current is None:
-            raise PermissionError("REQUEST_NOT_FOUND_OR_NOT_OWNED")
-        seen = list(current.get("recommended_candidate_ids") or [])
+                                      trace_dir: str = "", pending_evaluations: list[dict[str, Any]] | None = None,
+                                      append: bool = False) -> dict[str, Any]:
+        """Atomically persist results; targeted retries never reset the shown snapshot."""
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = self._row(conn.execute(
+                "SELECT * FROM recruitment_requests WHERE request_id=? AND owner_staff_id=?",
+                (request_id, owner_staff_id),
+            ).fetchone())
+            if current is None:
+                raise PermissionError("REQUEST_NOT_FOUND_OR_NOT_OWNED")
+            ranking = list(current["ranking"]) if append else []
+            known = {x["candidate_id"] for x in ranking}
+            for item in recommendations:
+                if item["candidate_id"] not in known:
+                    ranking.append({**item, "recommendation_order": len(ranking) + 1})
+                    known.add(item["candidate_id"])
+            payload = dict(current["request"])
+            if pending_evaluations is not None:
+                payload["pending_evaluations"] = pending_evaluations
             conn.execute(
-                """UPDATE recruitment_requests SET ranking_json=?, recommendation_cursor=0,
-                   recommended_candidate_ids_json=?, last_screen_resume_count=?, status=?, trace_dir=?, updated_at=?
+                """UPDATE recruitment_requests SET ranking_json=?, recommendation_cursor=?,
+                   request_json=?, last_screen_resume_count=?, status=?, trace_dir=?, updated_at=?
                    WHERE request_id=? AND owner_staff_id=?""",
-                (_j(recommendations), _j(seen), int(resume_count), "CANDIDATES_READY", trace_dir, _now(), request_id, owner_staff_id),
+                (_j(ranking), current["recommendation_cursor"] if append else 0, _j(payload),
+                 int(resume_count), "CANDIDATES_READY", trace_dir, _now(), request_id, owner_staff_id),
             )
-            self._event(conn, request_id, owner_staff_id, "RECOMMENDATION_SNAPSHOT_CREATED", {"count": len(recommendations), "resume_count": resume_count})
+            self._event(conn, request_id, owner_staff_id, "RECOMMENDATION_SNAPSHOT_CREATED",
+                        {"count": len(ranking), "resume_count": resume_count})
         return self.get_for_owner(owner_staff_id, request_id) or {}
 
     def set_ranking_for_owner(self, owner_staff_id: str, request_id: str, ranking: list[dict[str, Any]], *, resume_count: int,
@@ -336,11 +352,15 @@ class HiringRequestRepository:
             seen.add(cid)
             recommended.append(cid)
         new_cursor = scan
-        new_status = "REVIEWING_CANDIDATES" if batch else "WAITING_HR_SOURCING"
+        new_status = "REVIEWING_CANDIDATES" if batch else (
+            "EVALUATION_PENDING" if current["request"].get("pending_evaluations") else "WAITING_HR_SOURCING")
+        payload = dict(current["request"])
+        if batch:
+            payload["last_batch_candidate_ids"] = [x["candidate_id"] for x in batch]
         with self._connect() as conn:
             conn.execute(
-                "UPDATE recruitment_requests SET recommendation_cursor=?, recommended_candidate_ids_json=?, status=?, sourcing_status=?, updated_at=? WHERE request_id=? AND owner_staff_id=?",
-                (new_cursor, _j(recommended), new_status, "WAITING_HR_SOURCING" if not batch else "", _now(), request_id, owner_staff_id),
+                "UPDATE recruitment_requests SET recommendation_cursor=?, recommended_candidate_ids_json=?, request_json=?, status=?, sourcing_status=?, updated_at=? WHERE request_id=? AND owner_staff_id=?",
+                (new_cursor, _j(recommended), _j(payload), new_status, "WAITING_HR_SOURCING" if new_status == "WAITING_HR_SOURCING" else "", _now(), request_id, owner_staff_id),
             )
             self._event(conn, request_id, owner_staff_id, "CANDIDATE_BATCH_SHOWN", {"candidate_ids": [x.get("candidate_id") for x in batch]})
         return batch
