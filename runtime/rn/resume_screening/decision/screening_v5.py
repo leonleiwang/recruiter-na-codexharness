@@ -286,7 +286,7 @@ class HiringDecisionScreeningService:
 
         return collected[: self.pool_limit]
 
-    def screen_request(self, request: dict[str, Any]) -> dict[str, Any]:
+    def screen_request(self, request: dict[str, Any], *, retry_only: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         screening_started = time.perf_counter()
         request_id = str(request.get("request_id") or "")
         profile = _profile_for_request(request, self.profiles)
@@ -294,9 +294,22 @@ class HiringDecisionScreeningService:
             raise UnsupportedScreeningPolicy()
         actual = build_actual_criteria(request, profile)
         resume_count = int(self.resumes.count())
-        pool = self._pool(request, profile)
+        if retry_only is None:
+            pool = self._pool(request, profile)
+        else:
+            pool = []
+            for pending in retry_only[:self.pool_limit]:
+                cid, ref = pending["candidate_id"], pending["source_resume_ref"]
+                try:
+                    record = self.resumes.get_candidate(ref) if ref.isdigit() else self.resumes.get(ref)
+                    row = getattr(record, "raw", record) or {}
+                    if str(row.get("candidate_id") or row.get("resume_id") or "") != cid:
+                        row = {}
+                except Exception:
+                    row = {}
+                pool.append(row or {"candidate_id": cid, "_retry_missing": True, "_retry_ref": ref})
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        run_dir = self.run_root / f"{stamp}-{request_id}-decision"
+        run_dir = self.run_root / f"{stamp}-{request_id}-{time.time_ns()}-decision"
         run_dir.mkdir(parents=True, exist_ok=True)
         _write_json(run_dir / "data_sources.json", {
             "schema_version": "5.0.2",
@@ -319,6 +332,8 @@ class HiringDecisionScreeningService:
             cid = str(resume.get("candidate_id") or resume.get("resume_id") or f"candidate-{idx}")
             candidate_started = time.perf_counter()
             try:
+                if resume.get("_retry_missing"):
+                    raise RuntimeError("PENDING_RESUME_UNAVAILABLE")
                 result = evaluate_candidate_v5(
                     resume,
                     request=request,
@@ -336,6 +351,7 @@ class HiringDecisionScreeningService:
                     "candidate_id": cid,
                     "name": resume.get("name"),
                     "evaluation_status": "FAILED",
+                    "source_resume_ref": str(resume.get("_mysql_uid") or resume.get("resume_id") or resume.get("_retry_ref") or cid),
                     "error": str(exc),
                     "elapsed_ms": elapsed_ms,
                 }
@@ -407,6 +423,7 @@ class HiringDecisionScreeningService:
             "request_id": request_id,
             "resume_count": resume_count,
             "candidate_pool_count": len(pool),
+            "attempted_candidate_ids": [str(r.get("candidate_id") or r.get("resume_id") or "") for r in pool],
             "evaluated_count": len(decisions),
             "pass_count": len(recommendations),
             "reject_count": len(rejected_candidates),
