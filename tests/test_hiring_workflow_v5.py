@@ -257,7 +257,7 @@ def test_screening_renders_candidate_decisions_without_score_fields(tmp_path: Pa
     assert "**面试重点：**" in out["message"]
     assert "本批推荐 3 人\n\n---\n\n**1." in out["message"]
     assert "**1. 甲**｜" in out["message"]
-    assert "\n\n---\n\n**2. 乙**｜" in out["message"]
+    assert "\n\n────────────\n\n**2. 乙**｜" in out["message"]
     for forbidden in ("CS ", "RQ ", "JM ", "画像匹配", "JD 匹配"):
         assert forbidden not in out["message"]
 

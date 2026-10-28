@@ -387,11 +387,15 @@ def render_jd_summary(jd: dict[str, Any]) -> str:
     reference = (jd.get("related_template") or {}).get("reference") or {}
     if not jd.get("responsibilities") and reference.get("responsibilities"):
         lines.append("- 岗位职责：需求未提供，已按同岗位 JD 模板给出参考措辞，需确认。")
-    if jd.get("key_experience_skills"):
-        lines.append("- 关键能力/经验：" + "、".join(jd["key_experience_skills"][:6]))
+    tags = jd.get("screening_tag_names") or []
+    if tags:
+        rows = ["- " + "、".join(tags[i:i + 4]) for i in range(0, len(tags), 4)]
+        lines.append(f"**本次全部匹配标签（{len(tags)}项）**\n" + "\n".join(rows))
+    elif jd.get("key_experience_skills"):
+        lines.append("- 关键能力/经验：" + "、".join(jd["key_experience_skills"]))
     hard = [x.get("name") for x in jd.get("hard_requirements") or [] if x.get("gate_type") == "HARD_GATE"]
     if hard:
         lines.append("- 额外硬要求：" + "；".join(hard[:5]))
     lines.append("\n完整 JD（岗位职责 + 任职要求）已写入 `jd.md`，可直接复制发布。")
-    lines.append("\n回复 **“开始筛选”**，我会按这次招聘需求对相关候选人完成语义评分并推荐前三名；需要调整 JD，直接告诉我修改内容即可。")
-    return "\n".join(lines)
+    lines.append("\n回复 **“开始筛选”**，我会按这次招聘需求对相关候选人完成评估并推荐前三名；需要调整 JD，直接告诉我修改内容即可。")
+    return "\n\n".join(lines)

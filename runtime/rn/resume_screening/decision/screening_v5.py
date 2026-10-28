@@ -397,6 +397,7 @@ class HiringDecisionScreeningService:
                 "recommendation_reasons": item.get("recommendation_reasons") or [],
                 "source_resume_ref": item.get("source_resume_ref") or "",
                 "matched_tag_count": int(item.get("matched_tag_count") or 0),
+                "matched_tag_names": item.get("matched_tag_names"),
                 "applicable_tag_count": int(item.get("applicable_tag_count") or 0),
                 "summary": item.get("candidate_summary") or {},
             })
