@@ -46,15 +46,20 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
 
     cert = hard.get("certification") or {}
     cert_status = str(cert.get("status") or "unknown")
-    cert_fail = cert_status in {"expired", "none"}
+    accepted_cert_statuses = set((criteria.get("hard_filters") or {}).get(
+        "certification_accepted_statuses", ["valid", "pending_exam"]))
+    cert_fail = cert_status in {"expired", "none"} or (
+        cert_status == "eligible_to_apply" and cert_status not in accepted_cert_statuses)
     hard_summary["details"]["certification"] = {"status": cert_status, "pass": not cert_fail}
     if cert_fail:
         hard_summary["pass"] = False
         fail_reasons.append({"criterion": "检验资格证", "evidence": _first_evidence_text(cert), "rule": f"certification_{cert_status}"})
     elif cert_status == "unknown":
         needs_verification.append({"item": "检验资格证", "reason": cert.get("reasoning_summary") or "简历未提供足够证书信息"})
-    elif cert_status in {"valid", "pending_exam"}:
+    elif cert_status in {"valid", "pending_exam", "eligible_to_apply"}:
         matched_tag_count += 1
+        if cert_status == "eligible_to_apply":
+            needs_verification.append({"item": "报考资格", "reason": "应届报考资格需核实；尚未报名、未持证，不代表已取得检验资格证"})
 
     loc = hard.get("location") or {}
     loc_status = str(loc.get("status") or "unknown")

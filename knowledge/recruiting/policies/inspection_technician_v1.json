@@ -228,5 +228,15 @@
     "医学检验",
     "检验科",
     "检验"
-  ]
+  ],
+  "profile_hard_filter_overrides": {
+    "PROFILE-91603AA55F6E": {
+      "certification": "应届生具备检验士/师报考资格即可进入推荐；尚未报名、未持证不因此否决，报考资格需核实",
+      "certification_accepted_statuses": [
+        "valid",
+        "pending_exam",
+        "eligible_to_apply"
+      ]
+    }
+  }
 }

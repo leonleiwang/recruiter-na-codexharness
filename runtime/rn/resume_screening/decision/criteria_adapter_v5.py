@@ -130,6 +130,8 @@ def build_actual_criteria(request: dict[str, Any], profile: Any | None = None) -
         criteria = remaining
 
     hard_filters = deepcopy(policy.get("hard_filters") or {})
+    # Approved profile-specific eligibility, separate from scored criteria.
+    hard_filters.update(deepcopy((policy.get("profile_hard_filter_overrides") or {}).get(matched_profile_id) or {}))
     hard_filters["location"] = location
     return {
         "schema_version": "5.0",

@@ -25,7 +25,7 @@ _CRITERION_RESULTS = {"satisfied", "not_satisfied", "unknown"}
 _EVIDENCE_STATUS = {"confirmed", "partial", "none"}
 _HARD_STATUS = {
     "education": {"matched", "not_matched", "unknown"},
-    "certification": {"valid", "pending_exam", "expired", "none", "unknown"},
+    "certification": {"valid", "pending_exam", "eligible_to_apply", "expired", "none", "unknown"},
     "location": {"match", "willing", "unknown", "refused"},
 }
 _RED_LINE_STATUS = {"hit", "clear", "unknown"}
@@ -190,10 +190,10 @@ def _build_prompt(criteria: dict[str, Any], resume_facts: dict[str, Any]) -> str
 4. 只有明确事实证明不满足时才可 not_satisfied。比如要求≥1年，简历明确写实习6个月，可 not_satisfied；只写“相关经验”但年限不清必须 unknown。
 5. hard check：
    - 学历: matched / not_matched / unknown。只有明确学历或专业冲突才 not_matched。
-   - 证书: valid / pending_exam / expired / none / unknown。“未提及证书”必须 unknown；none 仅限明确表示无证。
+   - 证书: valid / pending_exam / eligible_to_apply / expired / none / unknown。eligible_to_apply只表示明确具备报考资格但尚未报名/持证，且当前画像hard_filters允许此状态；不得仅凭学历或专业推断报考资格。若当前画像允许且原文明示具备资格但未报名/持证，使用eligible_to_apply，不得仅因未持证返回none。“未提及证书”必须 unknown；none 仅限明确表示无证。
    - 地点: match / willing / unknown / refused。当前城市不同不是 refused；只有明确拒绝目标地点才 refused。
    - 红线: hit / clear / unknown。hit 必须有直接事实证据；无法判断用 unknown。
-6. 所有 matched/not_matched、valid/pending_exam/expired/none、match/willing/refused、red-line hit，以及 criterion_result satisfied/not_satisfied 的 evidence.text 必须逐字引用简历事实，不得改写或编造，并给 source_path。
+6. 所有 matched/not_matched、valid/pending_exam/eligible_to_apply/expired/none、match/willing/refused、red-line hit，以及 criterion_result satisfied/not_satisfied 的 evidence.text 必须逐字引用简历事实，不得改写或编造，并给 source_path。
 7. confirmed 表示有具体、直接证据；partial 表示泛泛/间接/部分覆盖；none 表示无相关证据。
 8. 忽略性别、年龄、婚育、民族、宗教、户籍、健康、犯罪记录等敏感属性，不得用于筛选。
 9. 每个 hard check / red line / criterion 最多给 1 条最短且足够的逐字证据；不要重复引用同一段长文本。
@@ -208,7 +208,7 @@ def _build_prompt(criteria: dict[str, Any], resume_facts: dict[str, Any]) -> str
   "evaluation_status":"COMPLETE",
   "hard_checks":{{
     "education":{{"status":"matched|not_matched|unknown","evidence":[{{"text":"逐字原文","source_path":"raw_text"}}],"reasoning_summary":"..."}},
-    "certification":{{"status":"valid|pending_exam|expired|none|unknown","evidence":[],"reasoning_summary":"..."}},
+    "certification":{{"status":"valid|pending_exam|eligible_to_apply|expired|none|unknown","evidence":[],"reasoning_summary":"..."}},
     "location":{{"status":"match|willing|unknown|refused","evidence":[],"reasoning_summary":"..."}}
   }},
   "red_line_assessments":[{{"red_line_id":"RL01","status":"hit|clear|unknown","evidence":[],"reasoning_summary":"..."}}],
