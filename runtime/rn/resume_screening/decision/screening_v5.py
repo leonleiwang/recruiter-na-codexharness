@@ -399,6 +399,8 @@ class HiringDecisionScreeningService:
                 "matched_tag_count": int(item.get("matched_tag_count") or 0),
                 "matched_tag_names": item.get("matched_tag_names"),
                 "applicable_tag_count": int(item.get("applicable_tag_count") or 0),
+                # 学历/资格证/工作地点单独一行展示，不混进「符合标签」。
+                "hard_check_summary": item.get("hard_check_summary") or {},
                 "summary": item.get("candidate_summary") or {},
             })
 

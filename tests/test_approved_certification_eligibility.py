@@ -45,7 +45,10 @@ def test_graduate_eligible_not_registered_can_be_recommended_without_claiming_ce
     result = decide_candidate(c, assessment(c), FACTS)
     assert result['decision'] == 'pass'
     assert result['hard_check_summary']['details']['certification']['status'] == 'eligible_to_apply'
-    assert result['matched_tag_count'] == 3  # education + location + approved eligibility
+    # 学历/工作地点/资格证是资格门槛，不算「符合标签」；本用例能力与经验判据均未确认。
+    assert result['matched_tag_count'] == 0
+    assert result['matched_tag_names'] == []
+    assert result['applicable_tag_count'] == 7
     assert any('报考资格' in row['reason'] and '未持证' in row['reason'] for row in result['needs_verification'])
 
 
@@ -86,7 +89,8 @@ def test_unquoted_eligibility_downgrades_to_unknown_not_veto_or_confirmed_tag():
     assert result['hard_checks']['certification']['status'] == 'unknown'
     decision = decide_candidate(c, result, FACTS)
     assert decision['decision'] == 'pass'
-    assert decision['matched_tag_count'] == 2
+    assert decision['matched_tag_count'] == 0
+    assert decision['matched_tag_names'] == []
 
 
 def test_fabricated_eligibility_quote_cannot_be_grounded():

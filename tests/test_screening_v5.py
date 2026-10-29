@@ -131,8 +131,8 @@ def test_service_evaluates_full_pool_orders_passes_and_isolates_rejections_and_t
     assert result["recommendations"][0]["recommendation_order"] == 1
     assert result["recommendations"][2]["readiness"] == "needs_verification"
     # 社招画像：6 能力 + 3 经历 + 4 特质 = 13 条判据，加学历/资格证/地点 3 个资格标签。
-    assert result["recommendations"][0]["applicable_tag_count"] == 16
-    assert result["recommendations"][0]["matched_tag_count"] == 6
+    assert result["recommendations"][0]["applicable_tag_count"] == 9
+    assert result["recommendations"][0]["matched_tag_count"] == 3
     assert [x["candidate_id"] for x in result["rejected_candidates"]] == ["C4"]
     assert [x["candidate_id"] for x in result["failures"]] == ["C5"]
     assert "score" not in json.dumps(result["recommendations"], ensure_ascii=False).lower()

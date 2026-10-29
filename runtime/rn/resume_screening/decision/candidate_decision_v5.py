@@ -9,11 +9,25 @@ _HARD_LABELS = {
     "location": "工作地点",
 }
 
+# 只有能力/经验判据进入经理端「符合标签 x/y」的分子与分母：
+# - 学历/资格证/工作地点是资格门槛，单独一行展示，不算标签；
+# - 特质（抗压/细心/责任心/积极主动/持续学习）只能在面试中确认，
+#   按 AGENTS.md 只进「面试重点」，不能当成推荐理由或命中标签。
+_COUNTED_DIMENSIONS = {"capability", "experience"}
+
+
+def _counted_criteria(criteria: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Capability/experience criteria applicable to this profile, in policy order."""
+    return {
+        str(row.get("criterion_id") or ""): row
+        for row in criteria.get("criteria") or []
+        if str(row.get("dimension") or "") in _COUNTED_DIMENSIONS
+    }
+
 
 def applicable_tag_names(criteria: dict[str, Any]) -> list[str]:
-    """Business names for the same active labels counted in a decision."""
-    definitions = {str(x.get("criterion_id") or ""): x for x in criteria.get("criteria") or []}
-    return [*_HARD_LABELS.values(), *(str(row.get("name") or cid) for cid, row in definitions.items())]
+    """Business names of the capability/experience labels counted in a decision."""
+    return [str(row.get("name") or cid) for cid, row in _counted_criteria(criteria).items()]
 
 
 def _first_evidence_text(row: dict[str, Any]) -> str:
@@ -30,10 +44,11 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     preference_signals: list[dict[str, Any]] = []
     veto_items: list[dict[str, Any]] = []
     fail_reasons: list[dict[str, Any]] = []
-    # The manager-facing tag total includes active policy labels plus the
-    # three eligibility labels actually evaluated for every request. Red lines
-    # remain risk checks and are deliberately excluded from positive matches.
-    applicable_tag_count = len(criterion_defs) + 3
+    # Manager-facing tag hit rate counts only capability/experience labels.
+    # Eligibility gates and traits are reported separately (traits only in
+    # interview focus), so they must not inflate the numerator or denominator.
+    counted_definitions = _counted_criteria(criteria)
+    applicable_tag_count = len(counted_definitions)
     matched_tag_count = 0
     matched_tag_names: list[str] = []
 
@@ -48,9 +63,6 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         fail_reasons.append({"criterion": "学历", "evidence": _first_evidence_text(edu), "rule": "education_not_matched"})
     elif edu_status == "unknown":
         needs_verification.append({"item": "学历", "reason": edu.get("reasoning_summary") or "简历未提供足够学历/专业信息"})
-    elif edu_status == "matched":
-        matched_tag_count += 1
-        matched_tag_names.append(_HARD_LABELS["education"])
 
     cert = hard.get("certification") or {}
     cert_status = str(cert.get("status") or "unknown")
@@ -65,8 +77,6 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     elif cert_status == "unknown":
         needs_verification.append({"item": "检验资格证", "reason": cert.get("reasoning_summary") or "简历未提供足够证书信息"})
     elif cert_status in {"valid", "pending_exam", "eligible_to_apply"}:
-        matched_tag_count += 1
-        matched_tag_names.append(_HARD_LABELS["certification"])
         if cert_status == "eligible_to_apply":
             needs_verification.append({"item": "报考资格", "reason": "应届报考资格需核实；尚未报名、未持证，不代表已取得检验资格证"})
 
@@ -79,9 +89,6 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         fail_reasons.append({"criterion": "工作地点", "evidence": _first_evidence_text(loc), "rule": "location_refused"})
     elif loc_status == "unknown":
         needs_verification.append({"item": "工作地点", "reason": loc.get("reasoning_summary") or "简历未说明是否接受目标工作地点"})
-    elif loc_status == "match":
-        matched_tag_count += 1
-        matched_tag_names.append(_HARD_LABELS["location"])
 
     red_hits = []
     for red in assessment.get("red_line_assessments") or []:
@@ -107,7 +114,8 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         evidence_text = _first_evidence_text(row)
         reason = str(row.get("reasoning_summary") or "")
 
-        if result == "satisfied" and evidence_status == "confirmed":
+        if (str(definition.get("dimension") or "") in _COUNTED_DIMENSIONS
+                and result == "satisfied" and evidence_status == "confirmed"):
             matched_tag_count += 1
             matched_tag_names.append(name)
 

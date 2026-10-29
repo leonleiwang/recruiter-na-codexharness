@@ -241,6 +241,28 @@ def _latest_batch(request: dict[str, Any], shown: list[dict[str, Any]]) -> list[
     return [by_id[cid] for cid in ids if cid in by_id]
 
 
+_HARD_LABEL_FIELDS = (("education", "学历"), ("certification", "检验资格证"), ("location", "工作地点"))
+_HARD_PASS_STATUSES = {"matched", "valid", "pending_exam", "eligible_to_apply", "match"}
+_HARD_FAIL_STATUSES = {"not_matched", "expired", "none", "refused"}
+
+
+def _hard_condition_line(hard_summary: Any) -> str:
+    """资格门槛单独一行展示；它们不是「符合标签」，也不进命中率。"""
+    details = (hard_summary or {}).get("details") or {}
+    if not details:
+        return ""
+    bits = []
+    for key, label in _HARD_LABEL_FIELDS:
+        status = str((details.get(key) or {}).get("status") or "")
+        if status in _HARD_PASS_STATUSES:
+            bits.append(f"{label}✅")
+        elif status in _HARD_FAIL_STATUSES:
+            bits.append(f"{label}❌")
+        elif status == "unknown":
+            bits.append(f"{label}待核实")
+    return "**硬性条件：** " + "、".join(bits) if bits else ""
+
+
 def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> str:
     pending = (request.get("request") or {}).get("pending_evaluations") or []
     notice = (f"另有 {len(pending)} 位候选人因技术问题尚未完成评估，当前评估尚未结束。"
@@ -265,6 +287,9 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
             detail = "历史记录未保存标签明细" if names is None else ("、".join(names) or "暂无已确认命中标签")
             tag_summary += f"（{detail}）"
         lines.append(f"**通过理由：** {tag_summary}")
+        hard_line = _hard_condition_line(item.get("hard_check_summary"))
+        if hard_line:
+            lines.append(hard_line)
         reasons = item.get("recommendation_reasons") or []
         if reasons:
             lines.append("推荐依据：" + "；".join(str(x) for x in reasons[:3]))

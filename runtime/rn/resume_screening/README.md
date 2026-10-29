@@ -315,6 +315,11 @@ JD 的持久化（`jd_json`）和对话编排留在包外：`rn/hiring_requests.
 
 ### v5 正式链路
 
+- **「符合标签 x/y」的口径**：只有 `dimension` 为 `capability` / `experience` 的实际适用判据
+  进入分子与分母；学历 / 检验资格证 / 工作地点作为资格门槛单独一行展示（✅ / ❌ / 待核实），
+  特质（抗压、细心、责任心、积极主动、持续学习）只进「面试重点」，均不计入命中率。
+  分母随画像的判据裁剪变化（同一份政策文件下不同画像的适用能力/经验条数不同），不是固定数字。
+  实现在 `decision/candidate_decision_v5.py` 的 `_COUNTED_DIMENSIONS` / `_counted_criteria`。
 - **改判定规则 / 阈值**：优先改政策文件，由 `decision/criteria_adapter_v5.py` 编译为实际条件；
   硬性门禁与三态判定在 `decision/candidate_decision_v5.py`。
 - **改证据契约或提示词**：`decision/decision_evidence_evaluator.py`（v5）与

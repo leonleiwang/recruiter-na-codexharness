@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — v5 tag hit rate counts capability/experience only
+
+- 「符合标签 x/y」的分母改为该画像实际适用的能力/经验判据数（`dimension` 为
+  `capability` / `experience`），不再 `len(criteria) + 3`。学历 / 检验资格证 / 工作地点
+  作为资格门槛在卡片里单独一行展示（✅ / ❌ / 待核实）；特质只进「面试重点」，
+  不得计入命中标签，符合 `AGENTS.md`「特质不作推荐依据」的约束。
+- 影响面：`decision/candidate_decision_v5.py`（`_counted_criteria` 与计数分支）、
+  `decision/screening_v5.py`（推荐项带出 `hard_check_summary`）、
+  `hiring_workflow_v5.py`（卡片新增「硬性条件」行）。同一候选人的旧/新分母示例：
+  社招画像 9/16 → 3/9；应届画像 8/14 → 2/7（同一批合成证据）。
+- 测试数据按新口径更新；顺带修复 `tests/test_evaluation_recovery.py` 在 Windows
+  默认 GBK 下读取 UTF-8 `decision_snapshot.json` 的失败（`encoding="utf-8"`）。
+
 ## Unreleased — PR #1 six-defect repair
 
 - Disabled public static resume fallback; direct submission requires explicit DingTalk business acknowledgement.
