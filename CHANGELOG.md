@@ -12,6 +12,14 @@
   社招画像 9/16 → 3/9；应届画像 8/14 → 2/7（同一批合成证据）。
 - 测试数据按新口径更新；顺带修复 `tests/test_evaluation_recovery.py` 在 Windows
   默认 GBK 下读取 UTF-8 `decision_snapshot.json` 的失败（`encoding="utf-8"`）。
+- 命中数同样改成规则扫描：`decide_candidate` 有 `resume_facts.raw_text` 时走
+  `_scan_resume_tags()` → `analysis.matching.match_requirements()`，与上传简历链路共用一张
+  线索词表；LLM 只负责证据可靠性、否决与面试重点，不再决定命中条数（缺原文的旧数据才回退）。
+  LLM 有据证伪（`not_satisfied` + `confirmed`）的条目即使规则扫到也不计，结果附在
+  `resume_tag_scan` 字段。判据→匹配行的转换在 `analysis/requirements.py::requirement_from_criterion`。
+  同一批 103 人：旧证据口径 88 人卡在 3/7，新扫描口径分布 1/7~7/7（3 人 7/7、19 人 6/7、34 人 5/7）。
+- 测试更新：`tests/test_screening_v5.py`、`tests/test_readable_hiring_tags.py`、
+  `tests/test_approved_certification_eligibility.py`。
 
 ## Unreleased — PR #1 six-defect repair
 

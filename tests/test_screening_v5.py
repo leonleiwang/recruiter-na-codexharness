@@ -130,9 +130,12 @@ def test_service_evaluates_full_pool_orders_passes_and_isolates_rejections_and_t
     assert [x["candidate_id"] for x in result["recommendations"]] == ["C2", "C1", "C3"]
     assert result["recommendations"][0]["recommendation_order"] == 1
     assert result["recommendations"][2]["readiness"] == "needs_verification"
-    # 社招画像：6 能力 + 3 经历 + 4 特质 = 13 条判据，加学历/资格证/地点 3 个资格标签。
+    # 社招画像：6 能力 + 3 经历 = 9 条计分判据（4 条特质只进面试重点，不算标签）。
+    # 命中数来自与分析引擎同一套规则扫描（C2 的原文含「检验科」与「带教新人」），
+    # 不再采信 LLM 对每条判据的「已确认」结论。
     assert result["recommendations"][0]["applicable_tag_count"] == 9
-    assert result["recommendations"][0]["matched_tag_count"] == 3
+    assert result["recommendations"][0]["matched_tag_count"] == 2
+    assert result["recommendations"][0]["matched_tag_names"] == ["检验科经验", "人员带教经验"]
     assert [x["candidate_id"] for x in result["rejected_candidates"]] == ["C4"]
     assert [x["candidate_id"] for x in result["failures"]] == ["C5"]
     assert "score" not in json.dumps(result["recommendations"], ensure_ascii=False).lower()

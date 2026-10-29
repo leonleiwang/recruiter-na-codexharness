@@ -281,6 +281,37 @@ def _apply_profile_overrides(
     return kept, excluded, applied
 
 
+def requirement_from_criterion(
+    criterion: dict[str, Any],
+    *,
+    decision_mode: str | None = None,
+) -> dict[str, Any]:
+    """Map one v5 policy criterion to a matchable requirement row.
+
+    v5 决策链路手里只有政策判据（name/dimension/level/decision_mode），没有 JD
+    解析出来的要求行；但经理端「符合标签 x/y」必须和分析引擎用同一张线索词表，
+    否则同一份简历会出现两个数字（LLM 证据口径 vs 规则扫描口径）。这里复用
+    ``_requirement``，保证词表、强/弱线索、面试核实基线完全一致。
+
+    ``decision_mode`` 可覆盖政策里的判定模式：经理端标签扫描按「简历证据」口径
+    统一计数（面试核实项在面试前也要显示为命中/待验证，而不是从分母里消失）。
+    """
+    row = criterion if isinstance(criterion, dict) else {}
+    cid = _clean_text(row.get("criterion_id"))
+    return _requirement(
+        requirement_id=cid,
+        dimension=_clean_text(row.get("dimension")),
+        name=_clean_text(row.get("name")),
+        level=row.get("level") or DEFAULT_LEVEL,
+        decision_mode=decision_mode if decision_mode is not None else _clean_text(row.get("decision_mode")),
+        description=_clean_text(row.get("description")),
+        evidence_hints=_clean_text(row.get("evidence_hints")),
+        criterion_id=cid,
+        source=_clean_text(row.get("source")) or "policy",
+        include_hints=False,
+    )
+
+
 def requirements_from_policy(
     policy: dict[str, Any] | None = None,
     *,

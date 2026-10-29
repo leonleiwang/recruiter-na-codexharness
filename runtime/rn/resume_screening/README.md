@@ -320,6 +320,14 @@ JD 的持久化（`jd_json`）和对话编排留在包外：`rn/hiring_requests.
   特质（抗压、细心、责任心、积极主动、持续学习）只进「面试重点」，均不计入命中率。
   分母随画像的判据裁剪变化（同一份政策文件下不同画像的适用能力/经验条数不同），不是固定数字。
   实现在 `decision/candidate_decision_v5.py` 的 `_COUNTED_DIMENSIONS` / `_counted_criteria`。
+- **命中数用规则扫描、不采信 LLM 逐条结论**：`decide_candidate` 在拿到 `resume_facts.raw_text`
+  时调用 `_scan_resume_tags()` → `analysis.matching.match_requirements()`，用与上传简历链路同一张
+  线索词表判定命中；LLM 只负责证据可靠性、否决与面试重点。只有缺原文的旧数据才回退到证据计数。
+  如果 LLM「有据地」证伪某条（`not_satisfied` + `confirmed`），规则扫到也不算命中（反证优先）。
+  结果附在决策的 `resume_tag_scan` 字段里，便于对账。
+  判据到匹配行的转换在 `analysis/requirements.py::requirement_from_criterion`
+  （`decision_mode` 覆盖为 `resume_evidence`：面试核实项在面试前也要显示为命中/待验证，
+  而不是从分母里消失）。
 - **改判定规则 / 阈值**：优先改政策文件，由 `decision/criteria_adapter_v5.py` 编译为实际条件；
   硬性门禁与三态判定在 `decision/candidate_decision_v5.py`。
 - **改证据契约或提示词**：`decision/decision_evidence_evaluator.py`（v5）与

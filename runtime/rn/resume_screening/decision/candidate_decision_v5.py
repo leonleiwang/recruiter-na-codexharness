@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from rn.resume_screening.analysis import cues as cues_mod
+from rn.resume_screening.analysis import matching as matching_mod
+from rn.resume_screening.analysis import requirements as requirements_mod
+
 _HARD_LABELS = {
     "education": "学历",
     "certification": "检验资格证",
@@ -37,6 +41,44 @@ def _first_evidence_text(row: dict[str, Any]) -> str:
     return ""
 
 
+def _scan_resume_tags(
+    counted_definitions: dict[str, dict[str, Any]],
+    resume_facts: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """用分析引擎的规则扫描简历原文，给出能力/经验标签命中情况。
+
+    LLM 证据评估负责「有没有可靠证据、是否否决」，而经理端看到的
+    「符合标签 x/y」必须与分析引擎（上传简历→匹配）同一口径，因此这里直接调用
+    ``match_requirements``：同一张线索词表、同一套「命中/待验证/反证」判定。
+    简历没有原文（例如只有结构化字段）时返回 None，调用方回退到证据计数。
+    """
+    raw_text = str((resume_facts or {}).get("raw_text") or "")
+    if not raw_text or not counted_definitions:
+        return None
+    doc = {"requirements": [requirements_mod.requirement_from_criterion(
+        row, decision_mode="resume_evidence") for row in counted_definitions.values()]}
+    report = matching_mod.match_requirements(doc, {}, {"raw_text": raw_text})
+    items: list[dict[str, Any]] = []
+    for dim in (cues_mod.DIMENSION_CAPABILITY, cues_mod.DIMENSION_EXPERIENCE):
+        block = (report.get("dimensions") or {}).get(dim) or {}
+        items.extend(block.get("items") or [])
+    hit_items = [
+        {"criterion_id": str(item.get("criterion_id") or ""), "name": str(item.get("name") or ""),
+         "evidence": str(item.get("evidence") or "")}
+        for item in items
+        if item.get("counted", True) and str(item.get("state")) == matching_mod.STATE_MATCHED
+    ]
+    return {
+        "applicable_tag_count": int(report.get("tag_applied_count") or 0),
+        "matched_tag_count": len(hit_items),
+        "matched_tag_names": [item["name"] for item in hit_items],
+        "matched_items": hit_items,
+        "tag_hit_percent": report.get("tag_hit_percent"),
+        "interview_pending": list(report.get("interview_pending") or []),
+        "label": str(report.get("label") or ""),
+    }
+
+
 def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resume_facts: dict[str, Any] | None = None) -> dict[str, Any]:
     criterion_defs = {str(x.get("criterion_id") or ""): x for x in (criteria.get("criteria") or [])}
     needs_verification: list[dict[str, Any]] = []
@@ -51,6 +93,10 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     applicable_tag_count = len(counted_definitions)
     matched_tag_count = 0
     matched_tag_names: list[str] = []
+    # 规则扫描结果优先：LLM 只负责证据可靠性与否决，命中数不另起一套口径。
+    resume_tag_scan = _scan_resume_tags(counted_definitions, resume_facts)
+    evidence_matched_count = 0
+    evidence_matched_names: list[str] = []
 
     hard = assessment.get("hard_checks") or {}
     hard_summary: dict[str, Any] = {"pass": True, "details": {}}
@@ -116,8 +162,8 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
 
         if (str(definition.get("dimension") or "") in _COUNTED_DIMENSIONS
                 and result == "satisfied" and evidence_status == "confirmed"):
-            matched_tag_count += 1
-            matched_tag_names.append(name)
+            evidence_matched_count += 1
+            evidence_matched_names.append(name)
 
         if mode == "hard_gate":
             if result == "not_satisfied":
@@ -163,6 +209,30 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
                     "reason": reason,
                 })
 
+    # 「符合标签」口径：有简历原文时一律用规则扫描结果（与分析引擎一致）；
+    # 只有缺原文的旧数据才回退到 LLM 证据计数。若 LLM 已「有据地」证伪某条，
+    # 即使规则扫到了线索也不能算命中（反证优先，避免把明显不符的人算成命中）。
+    if resume_tag_scan is not None:
+        grounded_negative = {
+            str(row.get("criterion_id") or "")
+            for row in assessment.get("criteria_assessments") or []
+            if str(row.get("criterion_result") or "") == "not_satisfied"
+            and str(row.get("evidence_status") or "") == "confirmed"
+        }
+        kept = [item for item in resume_tag_scan["matched_items"]
+                if item["criterion_id"] not in grounded_negative]
+        matched_tag_count = len(kept)
+        matched_tag_names = [item["name"] for item in kept]
+        applicable_tag_count = int(resume_tag_scan["applicable_tag_count"])
+        resume_tag_scan = {
+            **resume_tag_scan,
+            "matched_tag_count": matched_tag_count,
+            "matched_tag_names": matched_tag_names,
+        }
+    else:
+        matched_tag_count = evidence_matched_count
+        matched_tag_names = evidence_matched_names
+
     decision = "fail" if fail_reasons or veto_items else "pass"
     return {
         "schema_version": "5.0",
@@ -182,6 +252,10 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         "matched_tag_count": matched_tag_count,
         "matched_tag_names": matched_tag_names,
         "applicable_tag_count": applicable_tag_count,
+        "resume_tag_scan": {
+            key: value for key, value in (resume_tag_scan or {}).items()
+            if key != "matched_items"
+        },
     }
 
 

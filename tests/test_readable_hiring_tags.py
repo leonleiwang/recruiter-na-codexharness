@@ -42,11 +42,14 @@ def test_names_survive_screening_and_show_inside_parentheses(tmp_path: Path):
         jd_repo=object(), evaluator=FakeEvaluator(), run_root=tmp_path)
     result = screening.screen_request(request())
     item = result["recommendations"][0]
+    # 命中数由规则引擎扫原文得出（C2 原文含「检验科」与「带教新人」），
+    # 与分析引擎同一口径；LLM 的逐条结论不再直接当命中数。
     assert item["applicable_tag_count"] == 9
-    assert len(item["matched_tag_names"]) == item["matched_tag_count"] == 3
+    assert len(item["matched_tag_names"]) == item["matched_tag_count"] == 2
+    assert item["matched_tag_names"] == ["检验科经验", "人员带教经验"]
     assert "沟通表达能力" not in item["matched_tag_names"]
     text = _render_candidates(request(), [item])
-    assert "符合标签：3/9（" + "、".join(item["matched_tag_names"]) + "）" in text
+    assert "符合标签：2/9（检验科经验、人员带教经验）" in text
     # 资格门槛单独一行，不混进「符合标签」。
     assert "**硬性条件：** 学历✅、检验资格证✅、工作地点✅" in text
 
