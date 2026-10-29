@@ -315,19 +315,18 @@ JD 的持久化（`jd_json`）和对话编排留在包外：`rn/hiring_requests.
 
 ### v5 正式链路
 
-- **「符合标签 x/y」的口径**：只有 `dimension` 为 `capability` / `experience` 的实际适用判据
-  进入分子与分母；学历 / 检验资格证 / 工作地点作为资格门槛单独一行展示（✅ / ❌ / 待核实），
-  特质（抗压、细心、责任心、积极主动、持续学习）只进「面试重点」，均不计入命中率。
-  分母随画像的判据裁剪变化（同一份政策文件下不同画像的适用能力/经验条数不同），不是固定数字。
-  实现在 `decision/candidate_decision_v5.py` 的 `_COUNTED_DIMENSIONS` / `_counted_criteria`。
-- **命中数用规则扫描、不采信 LLM 逐条结论**：`decide_candidate` 在拿到 `resume_facts.raw_text`
-  时调用 `_scan_resume_tags()` → `analysis.matching.match_requirements()`，用与上传简历链路同一张
-  线索词表判定命中；LLM 只负责证据可靠性、否决与面试重点。只有缺原文的旧数据才回退到证据计数。
-  如果 LLM「有据地」证伪某条（`not_satisfied` + `confirmed`），规则扫到也不算命中（反证优先）。
-  结果附在决策的 `resume_tag_scan` 字段里，便于对账。
-  判据到匹配行的转换在 `analysis/requirements.py::requirement_from_criterion`
-  （`decision_mode` 覆盖为 `resume_evidence`：面试核实项在面试前也要显示为命中/待验证，
-  而不是从分母里消失）。
+- **卡片「符合标签 x/y」的口径**：`analysis/jd_card_tags.py` 直接复用
+  `requirements_from_jd` 与 `match_requirements`；分子是该 JD 已命中的能力/经验标签，
+  分母是规则引擎给出的适用标签。JD 确认清单也使用同一解析器。
+  数量随 JD 的归类、去重和适用结果变化，不固定为 7/8/9，也不取 v5 policy 标签数。
+  辅助引擎的资格提示、推荐结论与百分比不用于 v5 决策或推荐顺序；
+  v5 继续负责资格、最终判定、待核实与面试重点。
+  学历/检验资格证/工作地点单独展示；报考资格与待考不表示已持证，愿意到岗单独说明。
+  特质只进面试重点。历史快照需重新筛选后才采用新口径。
+  每位候选人的标签证据落盘为 `jd_tag_matching.json`。
+- **v5 内部参考标签**：原作者新增的 `_scan_resume_tags()` 继续按 policy 判据扫描，
+  并应用 grounded 反证；`resume_tag_scan` 用于内部追溯与 v5 推荐顺序。
+  它不覆盖经理端 JD 标签，卡片也不回退到该扫描或 LLM 计数。
 - **改判定规则 / 阈值**：优先改政策文件，由 `decision/criteria_adapter_v5.py` 编译为实际条件；
   硬性门禁与三态判定在 `decision/candidate_decision_v5.py`。
 - **改证据契约或提示词**：`decision/decision_evidence_evaluator.py`（v5）与

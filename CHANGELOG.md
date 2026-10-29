@@ -1,25 +1,23 @@
 # Changelog
 
-## Unreleased — v5 tag hit rate counts capability/experience only
+## Unreleased — JD rule tags on hiring cards, v5 decisions retained
 
-- 「符合标签 x/y」的分母改为该画像实际适用的能力/经验判据数（`dimension` 为
-  `capability` / `experience`），不再 `len(criteria) + 3`。学历 / 检验资格证 / 工作地点
-  作为资格门槛在卡片里单独一行展示（✅ / ❌ / 待核实）；特质只进「面试重点」，
-  不得计入命中标签，符合 `AGENTS.md`「特质不作推荐依据」的约束。
-- 影响面：`decision/candidate_decision_v5.py`（`_counted_criteria` 与计数分支）、
-  `decision/screening_v5.py`（推荐项带出 `hard_check_summary`）、
-  `hiring_workflow_v5.py`（卡片新增「硬性条件」行）。同一候选人的旧/新分母示例：
-  社招画像 9/16 → 3/9；应届画像 8/14 → 2/7（同一批合成证据）。
+- 卡片「符合标签 x/y」直接使用 `resume_screening` 现有规则引擎：
+  `requirements_from_jd` → 简历字段/标签提取 → `match_requirements`。
+  JD 确认前的「本次全部匹配标签」也使用同一 JD 解析器，不再展示 v5 policy 全集。
+  数量随实际 JD 的归类、去重和适用结果变化，不固定为 7/8/9。
+- `analysis/jd_card_tags.py` 只投影能力/经验标签的名称、命中数、适用数与证据；
+  辅助引擎的资格提示、推荐结论和百分比不进入卡片或 v5 决策。
+  v5 继续负责资格、最终决策、推荐顺序、待核实与面试重点。
+  v5 内部的计数只统计能力/经验，学历/资格证/地点及特质不参与该计数。
+- 资格门槛单独展示：报考资格、已报名待考均明确未持证，`willing` 明确展示愿意到岗。
+  每位候选人的 JD 匹配快照保存为 `jd_tag_matching.json`，与 v5 决策分开追溯。
+- 历史推荐快照保留原值；重新筛选后使用 JD 规则口径。未解析到标签时明确提示，
+  不回退到 policy 标签，也不因此改变 v5 通过/淘汰结论。
 - 测试数据按新口径更新；顺带修复 `tests/test_evaluation_recovery.py` 在 Windows
   默认 GBK 下读取 UTF-8 `decision_snapshot.json` 的失败（`encoding="utf-8"`）。
-- 命中数同样改成规则扫描：`decide_candidate` 有 `resume_facts.raw_text` 时走
-  `_scan_resume_tags()` → `analysis.matching.match_requirements()`，与上传简历链路共用一张
-  线索词表；LLM 只负责证据可靠性、否决与面试重点，不再决定命中条数（缺原文的旧数据才回退）。
-  LLM 有据证伪（`not_satisfied` + `confirmed`）的条目即使规则扫到也不计，结果附在
-  `resume_tag_scan` 字段。判据→匹配行的转换在 `analysis/requirements.py::requirement_from_criterion`。
-  同一批 103 人：旧证据口径 88 人卡在 3/7，新扫描口径分布 1/7~7/7（3 人 7/7、19 人 6/7、34 人 5/7）。
-- 测试更新：`tests/test_screening_v5.py`、`tests/test_readable_hiring_tags.py`、
-  `tests/test_approved_certification_eligibility.py`。
+- 保留原作者新增的 policy 判据规则扫描与 grounded 反证逻辑，作为 v5 内部参考；
+  卡片使用独立 JD 标签结果，不回退到 policy 扫描或 LLM 计数。
 
 ## Unreleased — PR #1 six-defect repair
 
