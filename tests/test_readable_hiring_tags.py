@@ -265,3 +265,22 @@ def test_screening_supplies_interview_directions_from_approved_criteria(tmp_path
     assert focus['question_direction'] == '快速辨识问题根因，制定对策，迅速响应突发负面状况'
     text = _render_candidates(request(), [item])
     assert '快速辨识问题根因，制定对策，迅速响应突发负面状况（问题分析与解决能力）' in text
+
+
+def test_each_candidate_has_its_own_download_link_after_interview_and_blank_lines():
+    rows = [{'candidate_id': str(i), 'name': f'候选{i}',
+             'interview_focus': [{'item': '沟通表达能力', 'question_direction': '介绍实际沟通经历'}]}
+            for i in range(1, 4)]
+    links = {str(i): f'https://example.test/recruiter-resumes/d/token-{i}' for i in range(1, 4)}
+    text = _render_candidates(request(), rows, download_links=links)
+    assert text.count('[下载个人简历](') == 3
+    for i in range(1, 4):
+        assert f'介绍实际沟通经历（沟通表达能力）\n\n[下载个人简历]({links[str(i)]})\n' in text
+    assert ')\n\n────────────\n' in text
+    assert text.index(links['1']) < text.index('**2.') < text.index(links['2']) < text.index('**3.') < text.index(links['3'])
+
+
+def test_missing_original_does_not_invent_a_download_link():
+    text = _render_candidates(request(), [{'candidate_id':'unavailable', 'name':'候选'}])
+    assert '\n\n个人简历暂不可下载，请联系 HR\n' in text
+    assert '[下载个人简历]' not in text

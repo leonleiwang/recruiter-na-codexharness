@@ -69,13 +69,17 @@ def _workflow_handle(argv: list[str]) -> dict[str, Any]:
     profile_repo = ProfileRepository()
     jd_repo = JDRepository()
     resume_repo = ResumeRepository()
+    request_repo = HiringRequestRepository()
+    delivery = SelectedResumeDeliveryService(resume_repo)
+    from rn.resume_downloads import from_env as downloads_from_env
     workflow = HiringManagerWorkflow(
-        request_repo=HiringRequestRepository(),
+        request_repo=request_repo,
         profile_repo=profile_repo,
         jd_repo=jd_repo,
         resume_repo=resume_repo,
         analyzer=HiringIntentAnalyzer.from_env(),
-        delivery_service=SelectedResumeDeliveryService(resume_repo),
+        delivery_service=delivery,
+        download_service=downloads_from_env(request_repo, delivery),
         screening_service=HiringDecisionScreeningService(
             resume_repo=resume_repo,
             profile_repo=profile_repo,

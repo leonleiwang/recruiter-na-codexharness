@@ -31,6 +31,9 @@ jobs:
           tests/test_candidate_decision_v5.py
           tests/test_secrets_and_privacy.py
           tests/test_codex_packaging.py
+          tests/test_resume_delivery.py
+          tests/test_resume_downloads.py
+          tests/test_resume_download_http.py
       - run: node --test im/*.test.mjs
       - run: python -m compileall -q runtime scripts
       - run: python scripts/secret_scan.py

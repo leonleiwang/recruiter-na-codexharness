@@ -85,6 +85,7 @@ INTENT_CLASSIFY_PROMPT = """你是招聘助手意图分类器。根据用户消�
 
 可能的意图（选一个）:
 - next_batch: 想换一批/继续推荐/继续筛选/再筛/再推/不合适/都看看/还有其他人/下一组/还有吗
+- show_current_batch: 再次查看当前这一批已推荐候选人或他们的简历下载链接；不是换一批，也不是选择某人
 - retry_pending: 重试尚未完成/技术失败的候选人评估，或请重新核实这些人
 - select: 选某人/确定了/这个人可以/要这个/就这个
 - start_screen: 开始筛选/开始推荐/确认JD/可以筛选
@@ -142,7 +143,7 @@ def _classify_intent_semantic(analyzer: Any, text: str, status: str, title: str,
                                                 missing=str(missing or "无"))
         result = analyzer._call(prompt)
         intent = str(result.get("intent", "")).strip().lower()
-        valid = {"retry_pending", "next_batch", "select", "start_screen", "pause", "restart_hiring", "show_progress", "new_hiring", "delete_request", "modify_jd", "resend_resume", "confirm_ccc_contact", "decline_ccc_contact", "restricted", "generic"}
+        valid = {"retry_pending", "next_batch", "show_current_batch", "select", "start_screen", "pause", "restart_hiring", "show_progress", "new_hiring", "delete_request", "modify_jd", "resend_resume", "confirm_ccc_contact", "decline_ccc_contact", "restricted", "generic"}
         if intent in valid:
             ordinal = result.get("selection_ordinal")
             ordinal = ordinal if isinstance(ordinal, int) and ordinal in {1, 2, 3} else None
@@ -286,7 +287,7 @@ def _hard_condition_line(hard_summary: Any) -> str:
     return "**硬性条件：** " + "、".join(bits) if bits else ""
 
 
-def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> str:
+def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]], *, download_links: dict[str, str] | None = None) -> str:
     pending = (request.get("request") or {}).get("pending_evaluations") or []
     notice = (f"另有 {len(pending)} 位候选人因技术问题尚未完成评估，当前评估尚未结束。"
               "可回复「重试未完成的候选人」，或请 HR 人工核实。") if pending else ""
@@ -324,6 +325,8 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
         interview = _interview_items(item.get("interview_focus"), 4)
         if interview:
             lines.append("**面试重点：**\n" + "\n".join(interview))
+        link = (download_links or {}).get(str(item.get("candidate_id") or ""))
+        lines.extend(["", f"[下载个人简历]({link})" if link else "个人简历暂不可下载，请联系 HR"])
     lines.append("\n---\n\n不合适可回复 **「换一批」**；看中某人可回复 **「选第1个/第2个/第3个」** 或直接说名字。")
     if notice:
         lines.append("\n" + notice)
@@ -332,7 +335,8 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
 
 class HiringManagerWorkflow:
     def __init__(self, *, request_repo: HiringRequestRepository, profile_repo: Any, jd_repo: Any, resume_repo: Any,
-                 analyzer: Any, screening_service: Any, delivery_service: Any | None = None):
+                 analyzer: Any, screening_service: Any, delivery_service: Any | None = None,
+                 download_service: Any | None = None):
         self.requests = request_repo
         self.profiles = profile_repo
         self.jds = jd_repo
@@ -340,10 +344,31 @@ class HiringManagerWorkflow:
         self.analyzer = analyzer
         self.screening = screening_service
         self.delivery = delivery_service
+        self.downloads = download_service
+
+    def _render_candidates(self, request: dict[str, Any], batch: list[dict[str, Any]]) -> str:
+        links = {}
+        if self.downloads is not None:
+            from rn.resume_downloads import DownloadDenied
+            for candidate in batch:
+                cid = str(candidate.get("candidate_id") or "")
+                try:
+                    links[cid] = self.downloads.url_for(request, cid)
+                except (DownloadDenied, OSError, RuntimeError, ValueError):
+                    _diagnose("resume_download_unavailable")
+        return _render_candidates(request, batch, download_links=links)
 
     def _latest(self, owner: str) -> dict[str, Any] | None:
         return (self.requests.focused_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES)
                 or self.requests.latest_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES))
+
+    def _show_current_batch(self, request: dict[str, Any]) -> dict[str, Any]:
+        shown = set(request.get("recommended_candidate_ids") or [])
+        rows = [row for row in request.get("ranking") or [] if row.get("candidate_id") in shown]
+        batch = _latest_batch(request, rows)
+        return {"handled": True, "request_id": request["request_id"], "state": request["status"],
+                "candidates": batch, "message": self._render_candidates(request, batch) if batch
+                else "这个需求目前还没有已推荐候选人，请先完成需求并开始筛选。"}
 
     def _request_from_text(self, owner: str, text: str) -> dict[str, Any] | None:
         items = self.requests.list_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES, limit=50)
@@ -574,7 +599,7 @@ class HiringManagerWorkflow:
         batch = self.requests.next_batch(owner, request["request_id"], 3)
         latest = self.requests.get_for_owner(owner, request["request_id"]) or request
         return {"handled": True, "request_id": request["request_id"], "state": latest["status"],
-                "candidates": batch, "message": _render_candidates(latest, batch)}
+                "candidates": batch, "message": self._render_candidates(latest, batch)}
 
     def _screen(self, owner: str, request: dict[str, Any]) -> dict[str, Any]:
         emit_progress("SCREENING", "正在建立候选池并执行 Candidate Decision…")
@@ -606,7 +631,7 @@ class HiringManagerWorkflow:
         stored = self.requests.get_for_owner(owner, request["request_id"]) or stored
         return {
             "handled": True, "request_id": request["request_id"], "state": stored["status"],
-            "candidates": batch, "message": _render_candidates(stored, batch), "trace_dir": result.get("trace_dir", ""),
+            "candidates": batch, "message": self._render_candidates(stored, batch), "trace_dir": result.get("trace_dir", ""),
             "decision_summary": {
                 "pass_count": int(result.get("pass_count") or len(recommendations)),
                 "reject_count": int(result.get("reject_count") or 0),
@@ -660,6 +685,8 @@ class HiringManagerWorkflow:
                     self.analyzer, t, "SELECTED", str(selected_request.get("position_title") or ""),
                 )
                 selected_intent = (selected_semantic or {}).get("intent")
+                if selected_intent == "show_current_batch" and active is None:
+                    return self._show_current_batch(selected_request)
                 if selected_intent == "resend_resume":
                     return self._redeliver_selected_resume(owner, selected_request)
                 # 改选只发生在没有活跃需求时；否则"选第 N 个"属于当前批次所在的需求。
@@ -730,6 +757,9 @@ class HiringManagerWorkflow:
         if intent == "show_progress":
             return self._list_progress(owner)
 
+        if intent == "show_current_batch":
+            return self._show_current_batch(request)
+
         if intent == "new_hiring":
             return self._start(owner, t, conversation_id)
 
@@ -793,7 +823,7 @@ class HiringManagerWorkflow:
             if intent == "next_batch":
                 batch = self.requests.next_batch(owner, request["request_id"], 3)
                 latest = self.requests.get_for_owner(owner, request["request_id"]) or request
-                return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}
+                return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": self._render_candidates(latest, batch)}
             return {"handled": True, "request_id": request["request_id"], "state": request["status"], "message": "当前正在候选人评审阶段。说「换一批」获取下一组 3 人，或说「选第1个/第2个/第3个」。"}
 
         if req_status == "SCREENING":
@@ -805,7 +835,7 @@ class HiringManagerWorkflow:
                 self._store_evaluations(owner, request, {**result, "recommendations": new_ranking})
                 batch = self.requests.next_batch(owner, request["request_id"], 3)
                 latest = self.requests.get_for_owner(owner, request["request_id"]) or request
-                return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}
+                return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": self._render_candidates(latest, batch)}
             return {"handled": True, "request_id": request["request_id"], "state": req_status, "message": "服务中断后状态重置中。回复「继续推荐」从断点恢复。"}
         if req_status == "WAITING_HR_SOURCING":
             if intent == "next_batch":
@@ -815,7 +845,7 @@ class HiringManagerWorkflow:
                 self._store_evaluations(owner, request, {**result, "recommendations": new_ranking})
                 batch = self.requests.next_batch(owner, request["request_id"], 3)
                 latest = self.requests.get_for_owner(owner, request["request_id"]) or request
-                return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}
+                return {"handled": True, "request_id": request["request_id"], "state": latest["status"], "candidates": batch, "message": self._render_candidates(latest, batch)}
             if intent is None:
                 return {"handled": True, "request_id": request["request_id"], "state": req_status, "message": "这个招聘需求当前在 **等待 HR 寻源**。有新简历进入后，回复「继续推荐」即可重新筛选。"}
             return {"handled": True, "request_id": request["request_id"], "state": req_status, "message": "这个招聘需求在等待新简历。有新简历入库后随时告诉我。"}
@@ -827,7 +857,7 @@ class HiringManagerWorkflow:
                 if restored["status"] in {"CANDIDATES_READY", "REVIEWING_CANDIDATES", "EVALUATION_PENDING"}:
                     batch = self.requests.next_batch(owner, restored["request_id"], 3)
                     latest = self.requests.get_for_owner(owner, restored["request_id"]) or restored
-                    return {"handled": True, "request_id": restored["request_id"], "state": latest["status"], "candidates": batch, "message": _render_candidates(latest, batch)}
+                    return {"handled": True, "request_id": restored["request_id"], "state": latest["status"], "candidates": batch, "message": self._render_candidates(latest, batch)}
                 return {"handled": True, "request_id": restored["request_id"], "state": restored["status"], "message": "已恢复这个招聘需求，可以继续处理。"}
             return {"handled": True, "request_id": request["request_id"], "state": "PAUSED", "message": "这个招聘需求目前已暂停。说「继续」可恢复。"}
 

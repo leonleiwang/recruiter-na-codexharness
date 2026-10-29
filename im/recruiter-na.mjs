@@ -11,6 +11,7 @@ import {
   UnifiedImBridge,
 } from '../vendor/codexharness-im/src/index.mjs';
 import { handleControlCommand, shouldUseHiringWorkflow } from './router.mjs';
+import { recordTrustedTenant } from './resume-tenant.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -129,6 +130,13 @@ const channel = new DingTalkStreamBotAdapter({
 });
 
 await channel.start(async (envelope, responder) => {
+  if (process.env.RECRUITER_RESUME_DOWNLOAD_TENANT_FILE) {
+    try {
+      recordTrustedTenant(envelope, process.env.RECRUITER_RESUME_DOWNLOAD_TENANT_FILE, process.env.DINGTALK_CLIENT_ID);
+    } catch {
+      console.error('[resume-download] tenant binding unavailable');
+    }
+  }
   const mid = envelope?.messageId || '?';
   if (!dedupe.claim(mid)) {
     console.log(`[im] duplicate skipped pid=${process.pid} message_id=${mid}`);

@@ -1,0 +1,23 @@
+[Unit]
+Description=Recruiter-Na enterprise-authenticated resume download gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=recruiter-na
+Group=recruiter-na
+UMask=0077
+WorkingDirectory=/opt/recruiter-na/app
+EnvironmentFile=/etc/recruiter-na/real-resume.env
+ExecStart=/opt/recruiter-na/app/.venv/bin/python -m rn.resume_download_http
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=true
+ReadWritePaths=/opt/recruiter-na/state
+
+[Install]
+WantedBy=multi-user.target
