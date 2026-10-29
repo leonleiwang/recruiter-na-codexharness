@@ -508,20 +508,25 @@ def requirements_from_jd_text(text: str, *, job_name: str = "") -> dict[str, Any
     requirements: list[dict[str, Any]] = []
     hard: dict[str, list[str]] = {"education": [], "certification": [], "location": []}
     sensitive_excluded: list[str] = []
+    # KSAO 词表里的标准标签名优先于硬条件/特质启发式：JD 把「沟通表达能力」
+    # 「专业背景与项目经验」写进关键经验技能时，它们是能力/经验标签，
+    # 不能因为名称里带「沟通」「专业」就被判成特质或并进学历硬条件。
+    cue_dimension_by_name = {cue.name: cue.dimension for cue in cues.CUES}
     for line in lines[:40]:
         if is_sensitive_requirement(line):
             # 敏感属性整行剔除，不生成任何要求（也不能进推荐顺序）。
             if line not in sensitive_excluded:
                 sensitive_excluded.append(line)
             continue
-        kinds = _hard_requirement_kinds(line)
+        exact_dimension = cue_dimension_by_name.get(_clean_text(line))
+        kinds = [] if exact_dimension else _hard_requirement_kinds(line)
         if kinds:
             for kind in kinds:
                 value = _hard_filter_value(kind, line)
                 if value and value not in hard[kind]:
                     hard[kind].append(value)
             continue
-        dimension = _classify_dimension(line)
+        dimension = exact_dimension or _classify_dimension(line)
         canonical = cues.canonicalize(line, dimension=dimension)
         # 词表命中就用词表名；没命中的描述句压成短标签，绝不让整句职责进标签名。
         name = canonical or _condense_tag_name(line)
@@ -678,7 +683,13 @@ def requirements_from_jd(jd: dict[str, Any]) -> dict[str, Any]:
         if text and text not in hard_buckets.setdefault(kind, []):
             hard_buckets[kind].append(text)
 
+    cue_dimension_by_name = {cue.name: cue.dimension for cue in cues.CUES}
     for name, value, gate in _hard_items_from_jd(jd):
+        if cue_dimension_by_name.get(_clean_text(name)) in cues.SCORING_DIMENSIONS:
+            # 生成 JD 有时把标准能力/经验标签也列进硬性条件（如「专业背景与项目经验」）：
+            # 它们是可计分标签，不能变成学历门槛。
+            ksa_tag_text.append(name)
+            continue
         if name in ("工作地点", "工作城市", "上班地点", "办公地点", "常驻地"):
             push_bucket("location", value or name)
             continue
