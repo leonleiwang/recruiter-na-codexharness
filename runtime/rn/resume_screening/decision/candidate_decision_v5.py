@@ -136,6 +136,10 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     elif loc_status == "unknown":
         needs_verification.append({"item": "工作地点", "reason": loc.get("reasoning_summary") or "简历未说明是否接受目标工作地点"})
 
+    red_line_labels = {
+        f"RL{index:02d}": str(label)
+        for index, label in enumerate((criteria.get("hard_filters") or {}).get("red_lines") or [], 1)
+    }
     red_hits = []
     for red in assessment.get("red_line_assessments") or []:
         status = str(red.get("status") or "unknown")
@@ -145,7 +149,7 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
             red_hits.append(rid)
             fail_reasons.append({"criterion": rid or "红线", "evidence": _first_evidence_text(red), "rule": "red_line_hit"})
         elif status == "unknown":
-            needs_verification.append({"item": rid or "红线", "reason": red.get("reasoning_summary") or "红线条件无法从简历确认"})
+            needs_verification.append({"item": red_line_labels.get(rid) or "资格限制条件", "reason": red.get("reasoning_summary") or "资格限制条件无法从简历确认"})
     hard_summary["details"]["red_lines"] = {"pass": not red_hits, "hits": red_hits}
 
     confirmed_resume_evidence_count = 0

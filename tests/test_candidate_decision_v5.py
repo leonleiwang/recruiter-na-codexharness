@@ -38,6 +38,21 @@ def assessment(*, education="matched", certification="valid", location="match", 
     }
 
 
+def test_unknown_red_line_uses_approved_business_label_without_changing_decision():
+    criteria = {**CRITERIA, "hard_filters": {"red_lines": ["资格证书已过期、暂停或吊销"]}}
+    result = decide_candidate(criteria, assessment(red="unknown"))
+    assert result["decision"] == "pass"
+    assert result["needs_verification"] == [
+        {"item": "资格证书已过期、暂停或吊销", "reason": "unknown"}]
+    assert result["hard_check_summary"]["details"]["red_lines"] == {"pass": True, "hits": []}
+
+
+def test_unknown_unmapped_red_line_does_not_expose_internal_id():
+    result = decide_candidate(CRITERIA, assessment(red="unknown"))
+    assert result["decision"] == "pass"
+    assert result["needs_verification"][0]["item"] == "资格限制条件"
+
+
 def test_unknown_hard_checks_do_not_fail_candidate():
     result = decide_candidate(CRITERIA, assessment(education="unknown", certification="unknown", location="unknown"))
     assert result["decision"] == "pass"

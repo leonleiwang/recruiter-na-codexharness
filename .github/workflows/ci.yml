@@ -1,0 +1,37 @@
+name: Public contract checks
+on:
+  push:
+    branches: [main, 'release/**', 'fix/**']
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - name: Public contract regressions (no private data or service access)
+        env:
+          PYTHONPATH: runtime
+        run: >-
+          python -m pytest -q
+          tests/test_resume_screening_jd_quality.py
+          tests/test_readable_hiring_tags.py
+          tests/test_request_context_and_deletion.py
+          tests/test_hiring_workflow_v5.py
+          tests/test_screening_v5.py
+          tests/test_candidate_decision_v5.py
+          tests/test_secrets_and_privacy.py
+          tests/test_codex_packaging.py
+      - run: node --test im/*.test.mjs
+      - run: python -m compileall -q runtime scripts
+      - run: python scripts/secret_scan.py
+      - run: git diff --check
