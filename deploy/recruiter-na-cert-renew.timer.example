@@ -1,0 +1,9 @@
+[Unit]
+Description=Check short-lived resume-download TLS certificate every six hours
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+Persistent=true
+RandomizedDelaySec=10min
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew resume-download IP TLS certificate with IP-capable Certbot
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/opt/pulsehr-certbot/bin/certbot renew --cert-name pulsehr-assets-ip --webroot --webroot-path /var/www/recruiter-na-acme --deploy-hook "nginx -t && systemctl reload nginx" --non-interactive --no-random-sleep-on-renew

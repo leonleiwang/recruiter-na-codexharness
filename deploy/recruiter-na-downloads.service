@@ -1,5 +1,5 @@
 [Unit]
-Description=Recruiter-Na enterprise-authenticated resume download gateway
+Description=Recruiter-Na original-resume resume download gateway
 After=network-online.target
 Wants=network-online.target
 

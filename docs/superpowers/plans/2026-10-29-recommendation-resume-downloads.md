@@ -33,13 +33,19 @@ Files: `runtime/rn/hiring_workflow_v5.py`, `runtime/rn/host_tool.py`, readable-t
 
 ## Task 4 — Deployment and acceptance
 
-- [ ] Run public contracts, full baseline comparison, IM, syntax and secret scans; record actual results.
-- [ ] Verify DingTalk callback configuration, TLS, loopback service, negative access tests and unchanged PulseHR services before enabling links.
-- [ ] Refresh the existing recommendation display without rerunning evaluation or advancing its batch. Use desktop to click each of the three real links and verify the original file mapping. Do not select/contact anyone.
-- [ ] Publish a new version if deployed; never retag v0.2.3. Preserve credentials, real MySQL, request state and rollback. Report any actual external authorization blocker explicitly.
+- [x] Run public contracts, full baseline comparison, IM, syntax and secret scans; record actual results.
+- [x] Verify TLS, loopback gateway, invalid ticket denial, real downloads, unchanged protected services; callback explicitly unnecessary in user-approved link mode.
+- [x] Refresh the existing recommendation display without rerunning evaluation or advancing its batch. Use desktop to click each of the three real links and verify the original file mapping. Do not select/contact anyone.
+- [x] Publish a new version if deployed; never retag v0.2.3. Preserve credentials, real MySQL, request state and rollback. Report any actual external authorization blocker explicitly.
 
 ## Verified implementation status
 
 2026-10-29: public Python contracts 160 passed; IM 13 passed; full local suite 568 passed, 8 pre-existing private-asset/OCR failures, 10 skipped (same failure names as docs/reviews/pr6-compatibility.md). Compile, secret scan and diff checks passed. Independent read-only review found no important defects, including corporate authorization. These are synthetic contract results, not actual enterprise OAuth/download acceptance.
 
 User revised download policy: all authenticated users of the configured enterprise with a valid recommendation link may download. No qyapi_get_member scope is required. Website OAuth callback remains a separate prerequisite. Deployment and release remain pending actual callback and real-file acceptance.
+
+## Final execution receipt
+
+User requested expiring-link mode instead of OAuth because administrator permissions are unavailable. No further approval requested. README documents the temporary access policy and two future login modes. Corporate/owner implementations remain disabled and lack live identity acceptance.
+
+Completed: 162 public Python tests, 13 IM tests, compile/secret/diff checks, independent review with no important defects. Full suite 570 passed, same 8 baseline private-asset/OCR failures, 10 skipped. Deployed v0.2.4 with persistent real MySQL/request state and dedicated loopback gateway. Desktop re-display preserved the current three; all three links downloaded and hashes matched. No candidate selected/contacted. Public CI passed. Existing expired TLS certificate renewed with compatible Certbot; dedicated six-hour renewal timer verified success. Protected PulseHR PIDs/restart counts unchanged.
