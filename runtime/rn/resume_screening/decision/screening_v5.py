@@ -156,7 +156,7 @@ def evaluate_candidate_v5(
         decision["recommendation_reasons"] = _recommendation_reasons(actual, evidence, decision)
         # Display-only JD rule matching. Keep the v5 decision/tag fields intact
         # for recommendation_order_key and never consume auxiliary vetoes.
-        decision["jd_tag_summary"] = match_jd_card_tags(request.get("jd") or {}, facts)
+        decision["jd_tag_summary"] = match_jd_card_tags(request.get("jd") or {}, facts, actual)
         timing["decision_ms"] = round((time.perf_counter() - t0) * 1000, 3)
 
         if trace:

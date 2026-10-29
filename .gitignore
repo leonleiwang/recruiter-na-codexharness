@@ -58,4 +58,18 @@ templates/简历推送报告.html
 # GUI-upload staging directories contain personal information.
 /.dsh-uploads/
 *.zip
-!docs/**/*.zip
+
+# Editors, additional database sidecars and local release bundles
+.idea/
+.vscode/
+*.db
+*.db-*
+*.sqlite3-*
+*.tar.gz
+*.tgz
+/dist/
+/build/
+*.egg-info/
+/coverage/
+htmlcov/
+.coverage

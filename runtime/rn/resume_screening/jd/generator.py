@@ -391,8 +391,14 @@ def render_jd_summary(jd: dict[str, Any]) -> str:
     if tags:
         rows = ["- " + "、".join(tags[i:i + 4]) for i in range(0, len(tags), 4)]
         lines.append(f"**本次全部匹配标签（{len(tags)}项）**\n" + "\n".join(rows))
+        lines.append("以上仅统计简历阶段可核验的能力/经验，不包含只能面试确认的项目。")
+    elif "screening_tag_names" in jd:
+        lines.append("本次JD未解析出可匹配的简历阶段能力/经验标签；面试确认项另列。")
     elif jd.get("key_experience_skills"):
         lines.append("- 关键能力/经验：" + "、".join(jd["key_experience_skills"]))
+    interview_tags = jd.get("interview_tag_names") or []
+    if interview_tags:
+        lines.append(f"**面试确认项（{len(interview_tags)}项）**\n- " + "、".join(interview_tags))
     hard = [x.get("name") for x in jd.get("hard_requirements") or [] if x.get("gate_type") == "HARD_GATE"]
     if hard:
         lines.append("- 额外硬要求：" + "；".join(hard[:5]))

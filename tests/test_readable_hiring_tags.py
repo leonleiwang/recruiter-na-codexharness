@@ -148,8 +148,8 @@ def test_empty_jd_does_not_fall_back_to_policy_tags(tmp_path):
     assert '本次JD未解析出可匹配的能力/经验标签' in _render_candidates(req, [item])
 
 
-@pytest.mark.parametrize('count', [7, 8, 9])
-def test_jd_tag_total_tracks_actual_jd_instead_of_a_fixed_policy(count, tmp_path):
+@pytest.mark.parametrize('count,resume_count', [(7, 3), (8, 4), (9, 5)])
+def test_jd_tag_total_tracks_resume_stage_of_actual_jd(count, resume_count, tmp_path):
     names = ['规范操作与执行能力', '问题分析与解决能力', '快速学习能力',
              '团队合作能力', '试剂耗材管理能力', '检验科经验',
              '试剂管理经验', '人员带教经验', 'PCR检测经验'][:count]
@@ -158,9 +158,9 @@ def test_jd_tag_total_tracks_actual_jd_instead_of_a_fixed_policy(count, tmp_path
     screening = HiringDecisionScreeningService(resume_repo=FakeResumeRepo(1), profile_repo=FakeProfileRepo(),
         jd_repo=object(), evaluator=FakeEvaluator(), run_root=tmp_path)
     item = screening.screen_request(req)['recommendations'][0]
-    assert item['applicable_tag_count'] == count
+    assert item['applicable_tag_count'] == resume_count
     assert item['matched_tag_names'] == ['检验科经验']
-    assert f'符合标签：1/{count}（检验科经验）' in _render_candidates(req, [item])
+    assert f'符合标签：1/{resume_count}（检验科经验）' in _render_candidates(req, [item])
 
 
 def test_jd_rule_hits_do_not_require_v5_llm_tag_confirmation(tmp_path):
@@ -178,3 +178,74 @@ def test_jd_rule_hits_do_not_require_v5_llm_tag_confirmation(tmp_path):
     assert item['decision'] == 'pass'
     assert item['matched_tag_names'] == ['检验科经验']
     assert item['matched_tag_count'] == item['applicable_tag_count'] == 1
+
+
+def test_resume_stage_denominator_excludes_interview_only_labels(tmp_path):
+    req = request()
+    req['jd'] = {'title': '检验技术员', 'key_experience_skills': [
+        '规范操作与执行能力', '检验科经验', '人员带教经验',
+        '问题分析与解决能力', '快速学习能力', '团队合作能力']}
+    class Resumes(FakeResumeRepo):
+        def __init__(self):
+            super().__init__(1)
+            self.rows[0]['raw_text'] += '。按SOP完成标本接收和上机检测。带教2名新人。专业排名前1%。'
+    service = HiringDecisionScreeningService(resume_repo=Resumes(), profile_repo=FakeProfileRepo(),
+        jd_repo=object(), evaluator=FakeEvaluator(), run_root=tmp_path)
+    item = service.screen_request(req)['recommendations'][0]
+    assert item['matched_tag_names'] == ['规范操作与执行能力', '检验科经验', '人员带教经验']
+    assert item['matched_tag_count'] == item['applicable_tag_count'] == 3
+    assert '符合标签：3/3（' in _render_candidates(req, [item])
+
+
+def test_missing_resume_stage_evidence_stays_in_denominator(tmp_path):
+    req = request()
+    req['jd'] = {'title': '检验技术员', 'key_experience_skills': [
+        '规范操作与执行能力', '检验科经验', '人员带教经验', '团队合作能力']}
+    service = HiringDecisionScreeningService(resume_repo=FakeResumeRepo(1), profile_repo=FakeProfileRepo(),
+        jd_repo=object(), evaluator=FakeEvaluator(), run_root=tmp_path)
+    item = service.screen_request(req)['recommendations'][0]
+    assert item['matched_tag_count'] == 1
+    assert item['applicable_tag_count'] == 3
+    assert item['matched_tag_names'] == ['检验科经验']
+
+
+def test_jd_summary_splits_resume_tags_from_interview_items(tmp_path):
+    wf = make_workflow(tmp_path)
+    _ready(wf)
+    current = wf.requests.latest_for_owner('dingtalk:alice')
+    current['request']['fields']['key_experience_skills'] = ['团队合作能力', '问题分析与解决能力']
+    wf.requests.update_for_owner('dingtalk:alice', current['request_id'], request=current['request'])
+    reply = wf._complete_intake('dingtalk:alice', current)
+    saved = wf.requests.latest_for_owner('dingtalk:alice')['jd']
+    assert saved['screening_tag_names'] == ['规范操作与执行能力', '检验科经验']
+    assert saved['interview_tag_names'] == ['团队合作能力', '问题分析与解决能力']
+    assert '面试确认项（2项）' in reply['message']
+
+
+def test_interview_focus_shows_question_direction_then_label():
+    item = {'candidate_id': 'synthetic', 'interview_focus': [
+        {'item': '问题分析与解决能力', 'reason': '简历未提及相关经历',
+         'question_direction': '异常处理；根因排查与对策'},
+        {'item': '快速学习能力', 'reason': '简历未体现学习描述',
+         'question_direction': '新流程或仪器的学习与独立上手'}]}
+    text = _render_candidates(request(), [item])
+    assert '① 异常处理；根因排查与对策（问题分析与解决能力）' in text
+    assert '② 新流程或仪器的学习与独立上手（快速学习能力）' in text
+    assert '简历未提及' not in text and '简历未体现' not in text
+
+
+def test_old_interview_focus_drops_repetitive_missing_evidence_reasons():
+    text = _render_candidates(request(), [{'candidate_id': 'old', 'interview_focus': [
+        {'item': '团队合作能力', 'reason': '简历未提及协作经历'}]}])
+    assert '围绕实际经历提问（团队合作能力）' in text
+    assert '简历未提及' not in text
+
+
+def test_screening_supplies_interview_directions_from_approved_criteria(tmp_path):
+    service = HiringDecisionScreeningService(resume_repo=FakeResumeRepo(1), profile_repo=FakeProfileRepo(),
+        jd_repo=object(), evaluator=FakeEvaluator(), run_root=tmp_path)
+    item = service.screen_request(request())['recommendations'][0]
+    focus = next(row for row in item['interview_focus'] if row['item'] == '问题分析与解决能力')
+    assert focus['question_direction'] == '快速辨识问题根因，制定对策，迅速响应突发负面状况'
+    text = _render_candidates(request(), [item])
+    assert '快速辨识问题根因，制定对策，迅速响应突发负面状况（问题分析与解决能力）' in text
