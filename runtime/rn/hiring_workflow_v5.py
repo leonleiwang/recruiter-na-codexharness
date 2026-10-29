@@ -91,7 +91,8 @@ INTENT_CLASSIFY_PROMPT = """你是招聘助手意图分类器。根据用户消�
 - pause: 暂停/挂起/先不招/暂时停
 - restart_hiring: 放弃当前未完成需求并重新开始/重来/从头再来
 - show_progress: 查看进展/我的需求/招聘列表
-- new_hiring: 我要招/新需求/换个岗位
+- new_hiring: 自然语言发起新的招聘诉求，包括“我要找一个”“需要招聘”“另开一个”；与旧岗位同名也可新建
+- delete_request: 删除本人招聘需求/工单；不包括删除简历、其他人的需求或全库数据
 - modify_jd: 修改JD/加条件/改需求/补充信息
 - resend_resume: 没看到已选候选人的简历/要求补发简历或下载链接
 - confirm_ccc_contact: 同意/确认让企业云联络中心或语音智能体联系已选候选人
@@ -102,22 +103,27 @@ INTENT_CLASSIFY_PROMPT = """你是招聘助手意图分类器。根据用户消�
 若 intent 为 select，必须同时判断用户选择的是当前批次的第几位：
 - selection_ordinal: 只能是 1、2、3 或 null；“第二个”“第2个”“选 2 位”等都填写对应数字。
 - selection_name: 仅用户明确说出候选人姓名时填写，否则为空字符串。
+- delete_current: 仅用户明确要求删除当前/这条招聘需求时为 true；删除目标不明确或提及他人时为 false。没有编号且目标不明确必须先澄清，不能默认删除当前需求。
 
 按用户真正想推进的动作理解，不依赖固定触发词；不能因为用户没有使用示例措辞而返回 generic。
 不得把补充岗位字段、应届/社招画像区分、候选人选择或单纯回答问题误判成 new_hiring。
 
 决策边界：
+- 候选评审、等待寻源、已暂停阶段，用户重新完整描述想招聘的岗位与条件，而非明确修改旧需求，应判断 new_hiring；不能因岗位同名而把用户锁在旧评审。
+- 在 DRAFT 追问岗位字段时，用户补充完整岗位描述属于 modify_jd，继续当前草稿。删除招聘需求是 delete_request；删除简历或他人数据是 restricted。
 - 「当前待补字段」不是“无”时，说明助手刚追问过这些字段。只要用户消息是在提供这些字段的取值，意图就是 modify_jd（继续当前草稿）——哪怕一次给出部门、人数、地点、薪资、到岗多个字段，哪怕整段读起来像一段招聘描述，都不得判成 new_hiring。
 - 「当前待补字段」是“无”，且消息本身是一段可独立成立的完整招聘描述时，意图才是 new_hiring。
 - 用户明确表达“另外再招一个 / 新开一个 / 换成招某个岗位”（引入新的岗位或新招聘诉求）时，无论待补字段是否为空，都是 new_hiring。
 - 只有用户明确在已确认的 JD 上增删、替换或调整某项要求时，才是 modify_jd；DRAFT 仍是未确认采集。
 
 严格输出 JSON，不要额外文字:
-{{"intent":"<意图>","selection_ordinal":null,"selection_name":"","confidence":0.0}}
+{{"intent":"<意图>","selection_ordinal":null,"selection_name":"","delete_current":false,"confidence":0.0}}
 """
 
 
 def _missing_labels(request: dict[str, Any]) -> str:
+    if request.get("status", "DRAFT") != "DRAFT":
+        return "无"
     # 助手当前还在追问的字段（人类可读）。分类器据此区分“补充字段”与“另起新需求”。
     try:
         fields = _missing_fields(request)
@@ -136,12 +142,13 @@ def _classify_intent_semantic(analyzer: Any, text: str, status: str, title: str,
                                                 missing=str(missing or "无"))
         result = analyzer._call(prompt)
         intent = str(result.get("intent", "")).strip().lower()
-        valid = {"retry_pending", "next_batch", "select", "start_screen", "pause", "restart_hiring", "show_progress", "new_hiring", "modify_jd", "resend_resume", "confirm_ccc_contact", "decline_ccc_contact", "restricted", "generic"}
+        valid = {"retry_pending", "next_batch", "select", "start_screen", "pause", "restart_hiring", "show_progress", "new_hiring", "delete_request", "modify_jd", "resend_resume", "confirm_ccc_contact", "decline_ccc_contact", "restricted", "generic"}
         if intent in valid:
             ordinal = result.get("selection_ordinal")
             ordinal = ordinal if isinstance(ordinal, int) and ordinal in {1, 2, 3} else None
             return {"intent": intent, "selection_ordinal": ordinal,
-                    "selection_name": str(result.get("selection_name") or "").strip()}
+                    "selection_name": str(result.get("selection_name") or "").strip(),
+                    "delete_current": result.get("delete_current") is True}
         _diagnose("intent_classify_unusable", status=status, returned=intent or "<empty>")
     except Exception as exc:
         # 分类失败必须留下运维可见的原因，否则用户只会看到"暂时无法理解"。
@@ -335,7 +342,8 @@ class HiringManagerWorkflow:
         self.delivery = delivery_service
 
     def _latest(self, owner: str) -> dict[str, Any] | None:
-        return self.requests.latest_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES)
+        return (self.requests.focused_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES)
+                or self.requests.latest_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES))
 
     def _request_from_text(self, owner: str, text: str) -> dict[str, Any] | None:
         items = self.requests.list_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES, limit=50)
@@ -343,10 +351,15 @@ class HiringManagerWorkflow:
         for item in items:
             if str(item.get("request_id") or "").casefold() in t:
                 return item
+        # A job description answers the current draft; its title must not
+        # silently switch to an older, same-role candidate-review request.
+        current = self._latest(owner)
+        if current and current.get("status") == "DRAFT":
+            return current
         title_hits = [item for item in items if item.get("position_title") and str(item["position_title"]).casefold() in t]
         if len(title_hits) == 1:
             return title_hits[0]
-        return items[0] if items else None
+        return current
 
     def _profile_for(self, request: dict[str, Any]) -> Any | None:
         profile_id = ((request.get("request") or {}).get("profile_match") or {}).get("profile_id")
@@ -369,6 +382,10 @@ class HiringManagerWorkflow:
     def _start(self, owner: str, text: str, conversation_id: str) -> dict[str, Any]:
         emit_progress("PROFILE_MATCH", "正在判断这次招聘需求是否匹配公司标准岗位画像…")
         analysis = self.analyzer.analyze_initial(text, _profiles(self.profiles))
+        previous = self._latest(owner)
+        if previous and previous["status"] != "PAUSED":
+            self.requests.update_for_owner(owner, previous["request_id"], status="PAUSED",
+                extra={"previous_status": previous["status"]}, event_type="NEW_REQUEST_CONTEXT_SWITCH")
         request = self.requests.create(owner, {
             "fields": analysis.get("fields") or {},
             "provided_fields": analysis.get("provided_fields") or [],
@@ -494,9 +511,10 @@ class HiringManagerWorkflow:
 
     def _update_draft(self, owner: str, request: dict[str, Any], text: str) -> dict[str, Any]:
         current_match = (request.get("request") or {}).get("profile_match") or {}
-        if current_match.get("status") == "AMBIGUOUS":
+        if current_match.get("status") == "AMBIGUOUS" or not (request.get("request", {}).get("fields") or {}).get("position_title"):
             original = str((request.get("request") or {}).get("source_text") or "")
-            analysis = self.analyzer.analyze_initial((original + "\n补充：" + text).strip(), _profiles(self.profiles))
+            known = json.dumps((request.get("request") or {}).get("fields") or {}, ensure_ascii=False)
+            analysis = self.analyzer.analyze_initial((original + "\n已知需求：" + known + "\n补充：" + text).strip(), _profiles(self.profiles))
         else:
             missing = _missing_fields(request)
             analysis = self.analyzer.analyze_update(text, request, missing)
@@ -508,6 +526,25 @@ class HiringManagerWorkflow:
         if _missing_fields(request):
             return {"handled": True, "request_id": request["request_id"], "state": "DRAFT", "message": _missing_prompt(request)}
         return self._complete_intake(owner, request)
+
+    def _delete_request(self, owner: str, text: str, current: dict[str, Any] | None,
+                        delete_current: bool = False) -> dict[str, Any]:
+        ids = list(dict.fromkeys(re.findall(r"\bREQ-[A-Za-z0-9-]+\b", text, re.IGNORECASE)))
+        if len(ids) > 1:
+            return {"handled": True, "message": "请一次指定一个要删除的招聘需求编号。"}
+        if ids:
+            target = self.requests.get_for_owner(owner, ids[0].upper())
+            if target is None:
+                return {"handled": True, "message": "该招聘需求不存在或不属于你，未执行删除。"}
+        else:
+            if not delete_current:
+                return {"handled": True, "message": "请指定要删除的需求编号，或明确说「删除当前招聘需求」。"}
+            target = current
+        if target is None:
+            return {"handled": True, "message": "请先查看我的招聘进展，再指定要删除的招聘需求编号。"}
+        self.requests.delete_for_owner(owner, target["request_id"])
+        return {"handled": True, "request_id": target["request_id"], "state": "DELETED",
+                "message": f"已删除你创建的招聘需求 **{target.get('position_title') or '未命名需求'}**（{target['request_id']}）。"}
 
     def _store_evaluations(self, owner: str, request: dict[str, Any], result: dict[str, Any], *, append: bool = False) -> dict[str, Any]:
         old = {x["candidate_id"]: x for x in (request["request"].get("pending_evaluations") or [])}
@@ -594,7 +631,7 @@ class HiringManagerWorkflow:
                         extra = "｜已有新简历进入，可继续推荐"
                 except Exception:
                     pass
-            lines.append(f"**{i}. {item.get('position_title') or '未命名岗位'}**｜{label}｜已推荐 {shown}/{total if total else '-'} 人｜{item['request_id']}{extra}")
+            lines.append(f"**{i}. {item.get('position_title') or '未命名岗位'}**｜{label}｜已推荐 {shown}/{total if total else '-'} 人｜创建人：{item['creator_oa_account']}｜{item['request_id']}{extra}")
         lines.append("\n需要继续某个需求，直接说岗位名或 Request ID + 「继续/换一批」。")
         return {"handled": True, "request_count": len(items), "message": "\n".join(lines)}
 
@@ -640,6 +677,8 @@ class HiringManagerWorkflow:
             top_intent = (top_decision or {}).get("intent")
             if top_intent == "new_hiring":
                 return self._start(owner, t, conversation_id)
+            if top_intent == "delete_request":
+                return self._delete_request(owner, t, None, bool(top_decision.get("delete_current")))
             if top_intent == "show_progress":
                 return self._list_progress(owner)
             if top_intent == "restricted":
@@ -660,8 +699,25 @@ class HiringManagerWorkflow:
             return {"handled": True, "request_id": request["request_id"], "state": req_status,
                     "message": "当前暂时无法理解这条消息，请稍后换一种说法再试。"}
 
+        # A semantic resume action may explicitly refer to an older own request.
+        # Ordinary role descriptions remain answers to the newest draft.
+        if intent == "next_batch" and request["request_id"].casefold() not in t.casefold():
+            named = [item for item in self.requests.list_for_owner(owner, statuses=ACTIVE_INPUT_STATUSES)
+                     if item.get("position_title") and item["position_title"] in t]
+            if len(named) > 1:
+                return {"handled": True, "message": "你有多条同名招聘需求，请指定要继续的需求编号。"}
+            if named:
+                request = named[0]
+                req_status = request["status"]
+
         if intent == "restricted":
             return {"handled": True, "message": "这个机器人面向用人部门，不提供全库浏览、其他人的招聘需求或简历数据库管理。我可以帮你发起招聘需求，或查看你自己的招聘进展。"}
+
+        if intent == "delete_request":
+            return self._delete_request(owner, t, request, bool(semantic.get("delete_current")))
+
+        if intent in {"next_batch", "select", "start_screen", "modify_jd", "pause", "restart_hiring", "retry_pending"}:
+            self.requests.focus_for_owner(owner, request["request_id"])
 
         if intent == "pause":
             paused = self.requests.update_for_owner(owner, request["request_id"], status="PAUSED", extra={"previous_status": request["status"]}, event_type="REQUEST_PAUSED")
