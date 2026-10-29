@@ -57,7 +57,7 @@ def setup_case(tmp_path):
     _ready(wf)
     first = wf.handle(OWNER, "开始筛选")
     assert first["decision_summary"] == {"pass_count": 5, "reject_count": 0, "technical_failure_count": 1}
-    snapshot = json.loads((Path(first["trace_dir"]) / "decision_snapshot.json").read_text())
+    snapshot = json.loads((Path(first["trace_dir"]) / "decision_snapshot.json").read_text(encoding="utf-8"))
     assert snapshot["failures"][0]["error"] == "red line assessment count mismatch"
     return wf, model, resumes, first
 

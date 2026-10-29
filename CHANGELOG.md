@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — JD rule tags on hiring cards, v5 decisions retained
+
+- 卡片「符合标签 x/y」直接使用 `resume_screening` 现有规则引擎：
+  `requirements_from_jd` → 简历字段/标签提取 → `match_requirements`。
+  JD 确认前的「本次全部匹配标签」也使用同一 JD 解析器，不再展示 v5 policy 全集。
+  数量随实际 JD 的归类、去重和适用结果变化，不固定为 7/8/9。
+- `analysis/jd_card_tags.py` 只投影能力/经验标签的名称、命中数、适用数与证据；
+  辅助引擎的资格提示、推荐结论和百分比不进入卡片或 v5 决策。
+  v5 继续负责资格、最终决策、推荐顺序、待核实与面试重点。
+  v5 内部的计数只统计能力/经验，学历/资格证/地点及特质不参与该计数。
+- 资格门槛单独展示：报考资格、已报名待考均明确未持证，`willing` 明确展示愿意到岗。
+  每位候选人的 JD 匹配快照保存为 `jd_tag_matching.json`，与 v5 决策分开追溯。
+- 历史推荐快照保留原值；重新筛选后使用 JD 规则口径。未解析到标签时明确提示，
+  不回退到 policy 标签，也不因此改变 v5 通过/淘汰结论。
+- 测试数据按新口径更新；顺带修复 `tests/test_evaluation_recovery.py` 在 Windows
+  默认 GBK 下读取 UTF-8 `decision_snapshot.json` 的失败（`encoding="utf-8"`）。
+- 保留原作者新增的 policy 判据规则扫描与 grounded 反证逻辑，作为 v5 内部参考；
+  卡片使用独立 JD 标签结果，不回退到 policy 扫描或 LLM 计数。
+
 ## Unreleased — PR #1 six-defect repair
 
 - Disabled public static resume fallback; direct submission requires explicit DingTalk business acknowledgement.

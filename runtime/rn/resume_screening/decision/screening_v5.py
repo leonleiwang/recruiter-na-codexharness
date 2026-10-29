@@ -19,6 +19,7 @@ from rn.resume_screening.decision.decision_evidence_evaluator import DecisionEvi
 from rn.resume_screening.decision.evidence_grounding import repair_decision_grounding, validate_decision_grounding
 from rn.resume_screening.decision.job_contract_v3 import normalize_resume_facts
 from rn.progress import emit_progress
+from rn.resume_screening.analysis.jd_card_tags import match_jd_card_tags
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -153,6 +154,9 @@ def evaluate_candidate_v5(
         # the manager-facing response.
         decision["source_resume_ref"] = str(resume.get("_mysql_uid") or resume.get("source_resume_ref") or "")
         decision["recommendation_reasons"] = _recommendation_reasons(actual, evidence, decision)
+        # Display-only JD rule matching. Keep the v5 decision/tag fields intact
+        # for recommendation_order_key and never consume auxiliary vetoes.
+        decision["jd_tag_summary"] = match_jd_card_tags(request.get("jd") or {}, facts)
         timing["decision_ms"] = round((time.perf_counter() - t0) * 1000, 3)
 
         if trace:
@@ -160,6 +164,7 @@ def evaluate_candidate_v5(
             _write_json(trace / "grounding_repair.json", repair_report)
             _write_json(trace / "decision_evidence_validation.json", grounding)
             _write_json(trace / "candidate_decision.json", decision)
+            _write_json(trace / "jd_tag_matching.json", decision["jd_tag_summary"])
             _write_json(trace / "state.json", {
                 "schema_version": "5.0.2",
                 "candidate_id": facts.get("candidate_id"),
@@ -385,6 +390,7 @@ class HiringDecisionScreeningService:
 
         recommendations: list[dict[str, Any]] = []
         for order, item in enumerate(passed, 1):
+            tag_view = item["jd_tag_summary"]
             recommendations.append({
                 "recommendation_order": order,
                 "candidate_id": item.get("candidate_id"),
@@ -396,9 +402,12 @@ class HiringDecisionScreeningService:
                 "preference_signals": item.get("preference_signals") or [],
                 "recommendation_reasons": item.get("recommendation_reasons") or [],
                 "source_resume_ref": item.get("source_resume_ref") or "",
-                "matched_tag_count": int(item.get("matched_tag_count") or 0),
-                "matched_tag_names": item.get("matched_tag_names"),
-                "applicable_tag_count": int(item.get("applicable_tag_count") or 0),
+                "matched_tag_count": tag_view["matched_tag_count"],
+                "matched_tag_names": tag_view["matched_tag_names"],
+                "applicable_tag_count": tag_view["applicable_tag_count"],
+                "tag_match_source": tag_view["source"],
+                # 学历/资格证/工作地点单独一行展示，不混进「符合标签」。
+                "hard_check_summary": item.get("hard_check_summary") or {},
                 "summary": item.get("candidate_summary") or {},
             })
 

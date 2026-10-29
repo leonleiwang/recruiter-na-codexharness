@@ -3,17 +3,35 @@ from __future__ import annotations
 
 from typing import Any
 
+from rn.resume_screening.analysis import cues as cues_mod
+from rn.resume_screening.analysis import matching as matching_mod
+from rn.resume_screening.analysis import requirements as requirements_mod
+
 _HARD_LABELS = {
     "education": "学历",
     "certification": "检验资格证",
     "location": "工作地点",
 }
 
+# 只有能力/经验判据进入经理端「符合标签 x/y」的分子与分母：
+# - 学历/资格证/工作地点是资格门槛，单独一行展示，不算标签；
+# - 特质（抗压/细心/责任心/积极主动/持续学习）只能在面试中确认，
+#   按 AGENTS.md 只进「面试重点」，不能当成推荐理由或命中标签。
+_COUNTED_DIMENSIONS = {"capability", "experience"}
+
+
+def _counted_criteria(criteria: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Capability/experience criteria applicable to this profile, in policy order."""
+    return {
+        str(row.get("criterion_id") or ""): row
+        for row in criteria.get("criteria") or []
+        if str(row.get("dimension") or "") in _COUNTED_DIMENSIONS
+    }
+
 
 def applicable_tag_names(criteria: dict[str, Any]) -> list[str]:
-    """Business names for the same active labels counted in a decision."""
-    definitions = {str(x.get("criterion_id") or ""): x for x in criteria.get("criteria") or []}
-    return [*_HARD_LABELS.values(), *(str(row.get("name") or cid) for cid, row in definitions.items())]
+    """Business names of the capability/experience labels counted in a decision."""
+    return [str(row.get("name") or cid) for cid, row in _counted_criteria(criteria).items()]
 
 
 def _first_evidence_text(row: dict[str, Any]) -> str:
@@ -23,6 +41,44 @@ def _first_evidence_text(row: dict[str, Any]) -> str:
     return ""
 
 
+def _scan_resume_tags(
+    counted_definitions: dict[str, dict[str, Any]],
+    resume_facts: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """用分析引擎的规则扫描简历原文，给出能力/经验标签命中情况。
+
+    LLM 证据评估负责「有没有可靠证据、是否否决」，而经理端看到的
+    「符合标签 x/y」必须与分析引擎（上传简历→匹配）同一口径，因此这里直接调用
+    ``match_requirements``：同一张线索词表、同一套「命中/待验证/反证」判定。
+    简历没有原文（例如只有结构化字段）时返回 None，调用方回退到证据计数。
+    """
+    raw_text = str((resume_facts or {}).get("raw_text") or "")
+    if not raw_text or not counted_definitions:
+        return None
+    doc = {"requirements": [requirements_mod.requirement_from_criterion(
+        row, decision_mode="resume_evidence") for row in counted_definitions.values()]}
+    report = matching_mod.match_requirements(doc, {}, {"raw_text": raw_text})
+    items: list[dict[str, Any]] = []
+    for dim in (cues_mod.DIMENSION_CAPABILITY, cues_mod.DIMENSION_EXPERIENCE):
+        block = (report.get("dimensions") or {}).get(dim) or {}
+        items.extend(block.get("items") or [])
+    hit_items = [
+        {"criterion_id": str(item.get("criterion_id") or ""), "name": str(item.get("name") or ""),
+         "evidence": str(item.get("evidence") or "")}
+        for item in items
+        if item.get("counted", True) and str(item.get("state")) == matching_mod.STATE_MATCHED
+    ]
+    return {
+        "applicable_tag_count": int(report.get("tag_applied_count") or 0),
+        "matched_tag_count": len(hit_items),
+        "matched_tag_names": [item["name"] for item in hit_items],
+        "matched_items": hit_items,
+        "tag_hit_percent": report.get("tag_hit_percent"),
+        "interview_pending": list(report.get("interview_pending") or []),
+        "label": str(report.get("label") or ""),
+    }
+
+
 def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resume_facts: dict[str, Any] | None = None) -> dict[str, Any]:
     criterion_defs = {str(x.get("criterion_id") or ""): x for x in (criteria.get("criteria") or [])}
     needs_verification: list[dict[str, Any]] = []
@@ -30,12 +86,17 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     preference_signals: list[dict[str, Any]] = []
     veto_items: list[dict[str, Any]] = []
     fail_reasons: list[dict[str, Any]] = []
-    # The manager-facing tag total includes active policy labels plus the
-    # three eligibility labels actually evaluated for every request. Red lines
-    # remain risk checks and are deliberately excluded from positive matches.
-    applicable_tag_count = len(criterion_defs) + 3
+    # Manager-facing tag hit rate counts only capability/experience labels.
+    # Eligibility gates and traits are reported separately (traits only in
+    # interview focus), so they must not inflate the numerator or denominator.
+    counted_definitions = _counted_criteria(criteria)
+    applicable_tag_count = len(counted_definitions)
     matched_tag_count = 0
     matched_tag_names: list[str] = []
+    # 规则扫描结果优先：LLM 只负责证据可靠性与否决，命中数不另起一套口径。
+    resume_tag_scan = _scan_resume_tags(counted_definitions, resume_facts)
+    evidence_matched_count = 0
+    evidence_matched_names: list[str] = []
 
     hard = assessment.get("hard_checks") or {}
     hard_summary: dict[str, Any] = {"pass": True, "details": {}}
@@ -48,9 +109,6 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         fail_reasons.append({"criterion": "学历", "evidence": _first_evidence_text(edu), "rule": "education_not_matched"})
     elif edu_status == "unknown":
         needs_verification.append({"item": "学历", "reason": edu.get("reasoning_summary") or "简历未提供足够学历/专业信息"})
-    elif edu_status == "matched":
-        matched_tag_count += 1
-        matched_tag_names.append(_HARD_LABELS["education"])
 
     cert = hard.get("certification") or {}
     cert_status = str(cert.get("status") or "unknown")
@@ -65,8 +123,6 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
     elif cert_status == "unknown":
         needs_verification.append({"item": "检验资格证", "reason": cert.get("reasoning_summary") or "简历未提供足够证书信息"})
     elif cert_status in {"valid", "pending_exam", "eligible_to_apply"}:
-        matched_tag_count += 1
-        matched_tag_names.append(_HARD_LABELS["certification"])
         if cert_status == "eligible_to_apply":
             needs_verification.append({"item": "报考资格", "reason": "应届报考资格需核实；尚未报名、未持证，不代表已取得检验资格证"})
 
@@ -79,9 +135,6 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         fail_reasons.append({"criterion": "工作地点", "evidence": _first_evidence_text(loc), "rule": "location_refused"})
     elif loc_status == "unknown":
         needs_verification.append({"item": "工作地点", "reason": loc.get("reasoning_summary") or "简历未说明是否接受目标工作地点"})
-    elif loc_status == "match":
-        matched_tag_count += 1
-        matched_tag_names.append(_HARD_LABELS["location"])
 
     red_hits = []
     for red in assessment.get("red_line_assessments") or []:
@@ -107,9 +160,10 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         evidence_text = _first_evidence_text(row)
         reason = str(row.get("reasoning_summary") or "")
 
-        if result == "satisfied" and evidence_status == "confirmed":
-            matched_tag_count += 1
-            matched_tag_names.append(name)
+        if (str(definition.get("dimension") or "") in _COUNTED_DIMENSIONS
+                and result == "satisfied" and evidence_status == "confirmed"):
+            evidence_matched_count += 1
+            evidence_matched_names.append(name)
 
         if mode == "hard_gate":
             if result == "not_satisfied":
@@ -155,6 +209,30 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
                     "reason": reason,
                 })
 
+    # 「符合标签」口径：有简历原文时一律用规则扫描结果（与分析引擎一致）；
+    # 只有缺原文的旧数据才回退到 LLM 证据计数。若 LLM 已「有据地」证伪某条，
+    # 即使规则扫到了线索也不能算命中（反证优先，避免把明显不符的人算成命中）。
+    if resume_tag_scan is not None:
+        grounded_negative = {
+            str(row.get("criterion_id") or "")
+            for row in assessment.get("criteria_assessments") or []
+            if str(row.get("criterion_result") or "") == "not_satisfied"
+            and str(row.get("evidence_status") or "") == "confirmed"
+        }
+        kept = [item for item in resume_tag_scan["matched_items"]
+                if item["criterion_id"] not in grounded_negative]
+        matched_tag_count = len(kept)
+        matched_tag_names = [item["name"] for item in kept]
+        applicable_tag_count = int(resume_tag_scan["applicable_tag_count"])
+        resume_tag_scan = {
+            **resume_tag_scan,
+            "matched_tag_count": matched_tag_count,
+            "matched_tag_names": matched_tag_names,
+        }
+    else:
+        matched_tag_count = evidence_matched_count
+        matched_tag_names = evidence_matched_names
+
     decision = "fail" if fail_reasons or veto_items else "pass"
     return {
         "schema_version": "5.0",
@@ -174,6 +252,10 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
         "matched_tag_count": matched_tag_count,
         "matched_tag_names": matched_tag_names,
         "applicable_tag_count": applicable_tag_count,
+        "resume_tag_scan": {
+            key: value for key, value in (resume_tag_scan or {}).items()
+            if key != "matched_items"
+        },
     }
 
 

@@ -45,7 +45,11 @@ def test_graduate_eligible_not_registered_can_be_recommended_without_claiming_ce
     result = decide_candidate(c, assessment(c), FACTS)
     assert result['decision'] == 'pass'
     assert result['hard_check_summary']['details']['certification']['status'] == 'eligible_to_apply'
-    assert result['matched_tag_count'] == 3  # education + location + approved eligibility
+    # 学历/工作地点/资格证是资格门槛，不算「符合标签」；命中数来自规则扫描原文：
+    # 「本科医学检验技术」是专业背景的线索（应届画像含该判据），其余能力/经验未提及。
+    assert result['matched_tag_count'] == 1
+    assert result['matched_tag_names'] == ['专业背景与项目经验']
+    assert result['applicable_tag_count'] == 7
     assert any('报考资格' in row['reason'] and '未持证' in row['reason'] for row in result['needs_verification'])
 
 
@@ -86,7 +90,9 @@ def test_unquoted_eligibility_downgrades_to_unknown_not_veto_or_confirmed_tag():
     assert result['hard_checks']['certification']['status'] == 'unknown'
     decision = decide_candidate(c, result, FACTS)
     assert decision['decision'] == 'pass'
-    assert decision['matched_tag_count'] == 2
+    # 未引用的报考资格不再被当成已确认标签；命中来自规则扫描（专业背景线索）。
+    assert decision['matched_tag_count'] == 1
+    assert decision['matched_tag_names'] == ['专业背景与项目经验']
 
 
 def test_fabricated_eligibility_quote_cannot_be_grounded():

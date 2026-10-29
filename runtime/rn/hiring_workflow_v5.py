@@ -9,8 +9,7 @@ from typing import Any
 from rn.hiring_requests import HiringRequestRepository
 from rn.progress import emit_progress
 from rn.resume_screening.decision.screening_v5 import UnsupportedScreeningPolicy
-from rn.resume_screening.decision.candidate_decision_v5 import applicable_tag_names
-from rn.resume_screening.decision.criteria_adapter_v5 import build_actual_criteria, supports_inspection_technician
+from rn.resume_screening.analysis.jd_card_tags import jd_tag_names
 from rn.resume_screening.jd.generator import build_request_jd, render_jd_summary
 from rn.resume_delivery import ResumeDeliveryError
 
@@ -241,6 +240,34 @@ def _latest_batch(request: dict[str, Any], shown: list[dict[str, Any]]) -> list[
     return [by_id[cid] for cid in ids if cid in by_id]
 
 
+_HARD_LABEL_FIELDS = (("education", "学历"), ("certification", "检验资格证"), ("location", "工作地点"))
+_HARD_PASS_STATUSES = {"matched", "valid", "match"}
+_HARD_FAIL_STATUSES = {"not_matched", "expired", "none", "refused"}
+
+
+def _hard_condition_line(hard_summary: Any) -> str:
+    """资格门槛单独一行展示；它们不是「符合标签」，也不进命中率。"""
+    details = (hard_summary or {}).get("details") or {}
+    if not details:
+        return ""
+    bits = []
+    for key, label in _HARD_LABEL_FIELDS:
+        status = str((details.get(key) or {}).get("status") or "")
+        if key == "certification" and status == "eligible_to_apply":
+            bits.append("检验资格证：具备报考资格（待核实、未持证）")
+        elif key == "certification" and status == "pending_exam":
+            bits.append("检验资格证：已报名待考（未持证）")
+        elif key == "location" and status == "willing":
+            bits.append("工作地点✅（愿意到岗）")
+        elif status in _HARD_PASS_STATUSES:
+            bits.append(f"{label}✅")
+        elif status in _HARD_FAIL_STATUSES:
+            bits.append(f"{label}❌")
+        elif status == "unknown":
+            bits.append(f"{label}待核实")
+    return "**硬性条件：** " + "、".join(bits) if bits else ""
+
+
 def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> str:
     pending = (request.get("request") or {}).get("pending_evaluations") or []
     notice = (f"另有 {len(pending)} 位候选人因技术问题尚未完成评估，当前评估尚未结束。"
@@ -260,11 +287,16 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
             lines.append("｜".join(bits))
         tag_total = int(item.get("applicable_tag_count") or 0)
         tag_summary = f"符合标签：{int(item.get('matched_tag_count') or 0)}/{tag_total}" if tag_total else "已按本次岗位标签完成筛选"
+        if not tag_total and item.get("tag_match_source") == "resume_screening_jd_rules":
+            tag_summary = "本次JD未解析出可匹配的能力/经验标签"
         if tag_total:
             names = item.get("matched_tag_names")
             detail = "历史记录未保存标签明细" if names is None else ("、".join(names) or "暂无已确认命中标签")
             tag_summary += f"（{detail}）"
         lines.append(f"**通过理由：** {tag_summary}")
+        hard_line = _hard_condition_line(item.get("hard_check_summary"))
+        if hard_line:
+            lines.append(hard_line)
         reasons = item.get("recommendation_reasons") or []
         if reasons:
             lines.append("推荐依据：" + "；".join(str(x) for x in reasons[:3]))
@@ -318,8 +350,7 @@ class HiringManagerWorkflow:
         except Exception:
             related = []
         jd = build_request_jd(request["request_id"], request["request"]["fields"], getattr(profile, "raw", None), related[0] if related else None)
-        if supports_inspection_technician(request, profile):
-            jd["screening_tag_names"] = applicable_tag_names(build_actual_criteria(request, profile))
+        jd["screening_tag_names"] = jd_tag_names(jd)
         request = self.requests.update_for_owner(owner, request["request_id"], jd=jd, status="JD_READY", event_type="JD_READY")
         return {"handled": True, "request_id": request["request_id"], "state": "JD_READY", "message": render_jd_summary(jd)}
 

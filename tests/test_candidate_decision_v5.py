@@ -128,25 +128,33 @@ def test_recommendation_order_prefers_more_matched_tags():
     assert [x[0] for x in ordered] == ["many", "few"]
 
 
-def test_matched_tag_count_uses_all_active_policy_labels_without_affecting_decision():
+def test_tag_counts_cover_only_capability_and_experience():
+    """「符合标签 x/y」只数能力/经验：硬性资格与特质不得进分子分母。"""
     criteria = {
         **CRITERIA,
         "criteria": [
             *CRITERIA["criteria"],
-            {"criterion_id": "C05", "name": "标签五", "decision_mode": "resume_evidence"},
-            {"criterion_id": "C06", "name": "标签六", "decision_mode": "resume_evidence"},
-            {"criterion_id": "C07", "name": "标签七", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C05", "name": "标签五", "dimension": "experience", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C06", "name": "标签六", "dimension": "capability", "decision_mode": "resume_evidence"},
+            {"criterion_id": "C07", "name": "标签七", "dimension": "trait", "decision_mode": "interview_verify"},
+            {"criterion_id": "C08", "name": "标签八", "dimension": "request_extra", "decision_mode": "hard_gate"},
         ],
     }
     doc = assessment(c3="satisfied", c4="satisfied")
     doc["criteria_assessments"].extend([
         {"criterion_id": "C05", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "五", "source_path": "raw_text"}]},
         {"criterion_id": "C06", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "六", "source_path": "raw_text"}]},
-        {"criterion_id": "C07", "criterion_result": "unknown", "evidence_status": "none", "evidence": []},
+        {"criterion_id": "C07", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "七", "source_path": "raw_text"}]},
+        {"criterion_id": "C08", "criterion_result": "satisfied", "evidence_status": "confirmed", "evidence": [{"text": "八", "source_path": "raw_text"}]},
     ])
 
     result = decide_candidate(criteria, doc)
 
-    assert result["matched_tag_count"] == 9
-    assert result["applicable_tag_count"] == 10
+    # 适用标签 = C02/C03/C04/C05/C06（能力+经验）；C01/C08 是额外硬要求，C07 是特质。
+    assert result["applicable_tag_count"] == 5
+    assert result["matched_tag_count"] == 5
+    assert result["matched_tag_names"] == ["检验科经验", "沟通表达能力", "人员带教经验", "标签五", "标签六"]
+    assert "学历" not in result["matched_tag_names"]
+    assert "检验资格证" not in result["matched_tag_names"]
+    assert "工作地点" not in result["matched_tag_names"]
     assert result["decision"] == "pass"
