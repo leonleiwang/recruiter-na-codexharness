@@ -20,9 +20,9 @@ New hiring descriptions create a separate request and pause the previous one. An
 
 The card counts only JD capability/experience labels that can be checked before an interview. Approved interview-only requirements are shown separately and excluded from both numerator and denominator, even when a resume contains related keywords. Three hits out of three resume-stage labels display as **3/3**; missing evidence remains in the denominator. The existing rule engine scans resume text; v5 retains eligibility, final decisions, ordering and interview focus. This is evidence coverage, not a talent score. Interview focus is shown as a question direction followed by its label, using approved criterion descriptions instead of repetitive missing-evidence text. Existing recommendation snapshots must be re-screened to adopt the new view.
 
-The public source version is recorded in `RELEASE_VERSION` (0.2.3); `VERSION` retains the workflow contract version 5.0.2.
+The public source version is recorded in `RELEASE_VERSION` (0.2.4); `VERSION` retains the workflow contract version 5.0.2.
 
-Release branch/tag: `release/v0.2.3` / `v0.2.3`. See [release notes](docs/releases/v0.2.3.md) for validation and limits.
+Release branch/tag: `release/v0.2.4` / `v0.2.4`. See [release notes](docs/releases/v0.2.4.md) for validation and limits.
 
 ## Developer preview
 
@@ -85,3 +85,9 @@ Resume parsing and screening code is grouped in `runtime/rn/resume_screening/` (
 [Apache-2.0](LICENSE)
 
 This license applies to the files distributed in this repository. It does not grant rights to any excluded private data, credentials, tenant configuration, or separately obtained runtime dependency.
+
+## v0.2.4: recommendation resume links
+
+Each recommended candidate includes an expiring original-resume link. The configured link mode needs no DingTalk OAuth or member permission; anyone holding the link can download, including recipients of forwarded links. Links expire within 24 hours, recheck live request and original-file validity, and are revoked when the request is deleted. Selection replies do not repeat links. Hiring-request management remains owner scoped.
+
+Future identity modes are implemented but have not passed live login acceptance and are not enabled: corporate mode needs the web-login callback and an exact enterprise claim; owner mode additionally needs member-identity mapping permission (qyapi_get_member). Enable either only after permissions and actual download acceptance are available. Current deployment remains in expiring-link mode.

@@ -1,4 +1,4 @@
-"""Expiring resume locators; every download requires the configured verified identity."""
+"""Expiring resume locators; downloads enforce the configured access policy and live source checks."""
 from __future__ import annotations
 
 import hashlib
@@ -72,8 +72,8 @@ class ResumeDownloadService:
             raise ValueError('RESUME_DOWNLOAD_HTTPS_BASE_REQUIRED')
         self.requests, self.delivery, self.store = requests, delivery, store
         self.base_url = base_url.rstrip('/')
-        self.ttl = min(2592000, max(60, ttl))
-        if access_mode not in {'owner', 'corporate'} or (access_mode == 'corporate' and not corp_id):
+        self.ttl = min(86400 if access_mode == 'link' else 2592000, max(60, ttl))
+        if access_mode not in {'owner', 'corporate', 'link'} or (access_mode == 'corporate' and not corp_id):
             raise ValueError('RESUME_DOWNLOAD_ACCESS_POLICY_REQUIRED')
         self.access_mode, self.corp_id = access_mode, corp_id
         self.audience = f'{access_mode}:{corp_id}'
@@ -96,7 +96,7 @@ class ResumeDownloadService:
 
     def download(self, ticket: str, authenticated_owner: str = '', *, authenticated_corp: str = '') -> tuple[str, bytes]:
         data = self.store.get(ticket, 'download')
-        authorized = (authenticated_corp == self.corp_id if self.access_mode == 'corporate'
+        authorized = (True if self.access_mode == 'link' else authenticated_corp == self.corp_id if self.access_mode == 'corporate'
                       else bool(authenticated_owner) and data is not None and data['owner'] == authenticated_owner)
         if not data or not authorized or data.get('audience') != self.audience:
             raise DownloadDenied()

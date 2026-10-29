@@ -90,7 +90,7 @@ class DingTalkCorporateIdentity(DingTalkIdentity):
 class DownloadHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, service: ResumeDownloadService, identity: DingTalkIdentity):
+    def __init__(self, address, service: ResumeDownloadService, identity: DingTalkIdentity | None):
         if address[0] != '127.0.0.1':
             raise ValueError('RESUME_DOWNLOAD_LOOPBACK_ONLY')
         self.service, self.identity = service, identity
@@ -150,6 +150,8 @@ class DownloadHandler(BaseHTTPRequestHandler):
             return self._reply(403, '身份校验失败。')
         store = self.server.service.store
         if path.path == PREFIX + '/callback':
+            if self.server.service.access_mode == 'link':
+                return self._reply(404)
             query = parse_qs(path.query, max_num_fields=10)
             if len(query.get('state', [])) != 1 or len(query.get('authCode', [])) != 1:
                 return self._reply(403, '身份校验失败，请重新打开简历链接。')
@@ -174,6 +176,8 @@ class DownloadHandler(BaseHTTPRequestHandler):
         ticket = match[1]
         if not store.get(ticket, 'download'):
             return self._reply(404, '简历链接无效或已失效，请在招聘对话中重新获取。')
+        if self.server.service.access_mode == 'link':
+            return self._attachment(ticket)
         session = store.get(cookie[SESSION_COOKIE].value, 'session') if SESSION_COOKIE in cookie else None
         if not session:
             browser = secrets.token_urlsafe(32)
@@ -184,6 +188,10 @@ class DownloadHandler(BaseHTTPRequestHandler):
                 'scope': self.server.identity.scope, 'prompt': 'consent', 'state': state,
                 **({'corpId': self.server.identity.corp_id} if hasattr(self.server.identity, 'corp_id') else {})})
             return self._reply(302, Location=authorize, **{'Set-Cookie': self._cookie(FLOW_COOKIE, browser, 600)})
+        return self._attachment(ticket, session)
+
+    def _attachment(self, ticket, session=None):
+        session = session or {}
         try:
             filename, content = self.server.service.download(ticket, session.get('owner', ''), authenticated_corp=session.get('corp_id', ''))
         except DownloadDenied:
@@ -200,7 +208,7 @@ def main():
     if service is None:
         raise SystemExit('RESUME_DOWNLOAD_NOT_CONFIGURED')
     credentials = (os.environ.get('DINGTALK_CLIENT_ID', ''), os.environ.get('DINGTALK_CLIENT_SECRET', ''))
-    identity = (DingTalkCorporateIdentity(*credentials, service.corp_id) if service.access_mode == 'corporate'
+    identity = (None if service.access_mode == 'link' else DingTalkCorporateIdentity(*credentials, service.corp_id) if service.access_mode == 'corporate'
                 else DingTalkIdentity(*credentials))
     server = DownloadHTTPServer(('127.0.0.1', int(os.environ.get('RECRUITER_RESUME_DOWNLOAD_PORT', '18891'))), service, identity)
     server.serve_forever()

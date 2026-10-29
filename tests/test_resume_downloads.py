@@ -211,3 +211,16 @@ def test_company_change_does_not_reauthorize_old_tickets(setup):
     ticket = token(first,request)
     other = ResumeDownloadService(requests, old.delivery, store, old.base_url,access_mode='corporate',corp_id='corp-other')
     with pytest.raises(DownloadDenied):other.download(ticket,'',authenticated_corp='corp-other')
+
+
+def test_expiring_link_mode_needs_no_login_but_rechecks_live_source(setup):
+    source, request, requests, store, _, now = setup
+    service = ResumeDownloadService(requests, SelectedResumeDeliveryService(Resumes(source), allowed_roots=[source.parent]), store,
+                                    'https://example.test/recruiter-resumes', ttl=60, access_mode='link')
+    ticket = token(service, request)
+    assert service.download(ticket)[1] == source.read_bytes()
+    requests.request['status'] = 'DELETED'
+    with pytest.raises(DownloadDenied): service.download(ticket)
+    requests.request['status'] = 'REVIEWING_CANDIDATES'
+    now[0] += 60
+    with pytest.raises(DownloadDenied): service.download(ticket)

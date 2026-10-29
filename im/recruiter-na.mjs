@@ -174,7 +174,8 @@ await channel.start(async (envelope, responder) => {
             console.error('[resume-delivery] submission failed');
           }
         }
-        // Never publish original resumes through an unauthenticated static URL.
+        // Recommendation links are rendered by the workflow. Do not repeat a
+        // download link in the selection reply or create a static public copy.
         // An accepted API submission does not prove recipient receipt.
         text += directSubmitted
           ? ' 已提交钉钉文件投递。'
@@ -203,7 +204,7 @@ await channel.start(async (envelope, responder) => {
   }
 });
 
-console.log(`Recruiter-Na v5.0.2 DingTalk bridge started; source=v0.2.3; pid=${process.pid}; root=${root}; dedupe=${dedupeDir}; progress=${progressDir}`);
+console.log(`Recruiter-Na v5.0.2 DingTalk bridge started; source=v0.2.4; pid=${process.pid}; root=${root}; dedupe=${dedupeDir}; progress=${progressDir}`);
 
 const stop = () => { try { channel.stop(); } finally { process.exit(0); } };
 process.on('SIGTERM', stop);

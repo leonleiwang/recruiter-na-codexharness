@@ -173,3 +173,20 @@ def test_corporate_browser_flow_needs_no_member_lookup_and_uses_company_session(
     assert status==303
     session=headers['Set-Cookie'].split(';',1)[0]
     assert get(http,path,session)[2]==b'%PDF-original'
+
+
+def test_link_mode_downloads_without_oauth_and_cannot_use_owner_mode_ticket(server):
+    http, service, request = server
+    owner_path = urlsplit(service.url_for(request, 'C1')).path
+    link_service = ResumeDownloadService(service.requests, service.delivery, service.store, service.base_url, access_mode='link')
+    http.service = link_service
+    http.identity = None
+    path = urlsplit(link_service.url_for(request, 'C1')).path
+    status, headers, body = get(http, path)
+    assert status == 200 and body == b'%PDF-original'
+    assert 'Location' not in headers and 'Set-Cookie' not in headers
+    assert headers['Content-Disposition'].startswith('attachment;')
+    assert get(http, owner_path)[0] == 403
+    assert get(http, path[:-1] + ('A' if path[-1] != 'A' else 'B'))[0] == 404
+    service.requests.request['status'] = 'DELETED'
+    assert get(http, path)[0] == 403
