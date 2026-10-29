@@ -436,6 +436,28 @@ def test_requirements_from_jd_uses_short_tag_names():
     assert not any(name in {"沟通表达能力", "细心", "责任心强"} for name in names)
 
 
+def test_standard_tag_names_are_not_swallowed_by_education_or_trait_heuristics():
+    """JD 显式写出的标准标签名，不能被「专业」判成学历条件、被「沟通」判成特质。"""
+    jd = {
+        "title": "检验技术员",
+        "responsibilities": ["常规临检/免疫/分子方向"],
+        "key_experience_skills": ["沟通表达能力", "专业背景与项目经验", "检验科经验"],
+        "hard_requirements": [
+            {"name": "学历：大专及以上学历", "value": "", "gate_type": "HARD_GATE"},
+            # 生成 JD 有时把能力/经验标签也列进硬性条件，不能因此变成学历门槛。
+            {"name": "专业背景与项目经验", "value": "", "gate_type": "HARD_GATE"},
+        ],
+        "bonus_points": [],
+    }
+    doc = requirements_from_jd(jd)
+    dimensions = {row["name"]: row["dimension"] for row in doc["requirements"]}
+    assert dimensions["沟通表达能力"] == "capability"
+    assert dimensions["专业背景与项目经验"] == "experience"
+    assert dimensions["检验科经验"] == "experience"
+    assert "专业背景与项目经验" not in doc["hard_filters"].get("education", "")
+    assert doc["hard_filters"]["education"] == "学历：大专及以上学历"
+
+
 def test_presentation_tag_names_match_scored_tags():
     """成稿的匹配标签必须与真正参与评分的标签一致（P0：显示 ≠ 评分已修）。"""
     profile = {
@@ -453,8 +475,9 @@ def test_presentation_tag_names_match_scored_tags():
             displayed.update(part for part in line.split("：", 1)[1].split("、") if part)
     scored = {row["name"] for row in requirements_from_jd(jd)["requirements"]}
     assert displayed == scored
-    # 画像里没有在本次 JD 中出现的标签不再硬塞进成稿
-    assert "专业背景与项目经验" not in tags_block
+    # 本次 JD 里有的画像标签（专业背景与项目经验）必须出现；JD 里没有的不能硬塞。
+    assert "专业背景与项目经验" in displayed
+    assert "人员带教经验" not in tags_block
 
 
 def test_cli_presentation_writes_three_section_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

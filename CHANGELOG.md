@@ -19,6 +19,23 @@
 - 保留原作者新增的 policy 判据规则扫描与 grounded 反证逻辑，作为 v5 内部参考；
   卡片使用独立 JD 标签结果，不回退到 policy 扫描或 LLM 计数。
 
+## Unreleased — JD 标准标签名优先于硬条件/特质启发式
+
+- `analysis/requirements.py`：JD 正文里与 KSAO 词表同名的标准标签（如「沟通表达能力」
+  「专业背景与项目经验」）优先按词表维度归类，`requirements_from_jd_text` 不再把前者判成特质、
+  后者判成学历条件；`requirements_from_jd` 也不再因为这类名字出现在 `hard_requirements`
+  里就把它们当门槛。
+- 影响：同一份真实应届 JD 的卡片标签从 6 条恢复到它应有的 8 条（`沟通表达能力`、
+  `专业背景与项目经验` 回到标签集合）。条数由该 JD 内容决定、不是目标值：
+  `workspace/runs/tag-count-demo/tag-variants.md` 里同一画像换 4 组需求字段，
+  JD 标签分别为 9/8/8/8 条且集合不同。103 人真实批次命中分布 8/8 3 人 → 8/8 4 人、7/8 17 人、6/8 35 人、
+  5/8 27 人、4/8 8 人、3/8 7 人、2/8 2 人、1/8 5 人；明细在
+  `workspace/runs/tag-count-demo/card-tags-distribution.json`。
+- 测试：`tests/test_resume_screening_jd_quality.py` 新增
+  `test_standard_tag_names_are_not_swallowed_by_education_or_trait_heuristics`，
+  并把 `test_presentation_tag_names_match_scored_tags` 的断言改为「JD 里有的标签必须出现、
+  JD 里没有的不能硬塞」。
+
 ## Unreleased — PR #1 six-defect repair
 
 - Disabled public static resume fallback; direct submission requires explicit DingTalk business acknowledgement.
