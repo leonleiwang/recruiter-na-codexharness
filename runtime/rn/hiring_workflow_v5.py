@@ -527,8 +527,7 @@ class HiringManagerWorkflow:
             return {"handled": True, "request_id": request["request_id"], "state": "DRAFT", "message": _missing_prompt(request)}
         return self._complete_intake(owner, request)
 
-    def _delete_request(self, owner: str, text: str, current: dict[str, Any] | None,
-                        delete_current: bool = False) -> dict[str, Any]:
+    def _delete_request(self, owner: str, text: str, delete_current: bool = False) -> dict[str, Any]:
         ids = list(dict.fromkeys(re.findall(r"\bREQ-[A-Za-z0-9-]+\b", text, re.IGNORECASE)))
         if len(ids) > 1:
             return {"handled": True, "message": "请一次指定一个要删除的招聘需求编号。"}
@@ -539,7 +538,9 @@ class HiringManagerWorkflow:
         else:
             if not delete_current:
                 return {"handled": True, "message": "请指定要删除的需求编号，或明确说「删除当前招聘需求」。"}
-            target = current
+            # Deletion must not use the active-input fallback: the actual focus
+            # can be SELECTED/closed while an older request remains paused.
+            target = self.requests.focused_for_owner(owner)
         if target is None:
             return {"handled": True, "message": "请先查看我的招聘进展，再指定要删除的招聘需求编号。"}
         self.requests.delete_for_owner(owner, target["request_id"])
@@ -678,7 +679,7 @@ class HiringManagerWorkflow:
             if top_intent == "new_hiring":
                 return self._start(owner, t, conversation_id)
             if top_intent == "delete_request":
-                return self._delete_request(owner, t, None, bool(top_decision.get("delete_current")))
+                return self._delete_request(owner, t, bool(top_decision.get("delete_current")))
             if top_intent == "show_progress":
                 return self._list_progress(owner)
             if top_intent == "restricted":
@@ -714,7 +715,7 @@ class HiringManagerWorkflow:
             return {"handled": True, "message": "这个机器人面向用人部门，不提供全库浏览、其他人的招聘需求或简历数据库管理。我可以帮你发起招聘需求，或查看你自己的招聘进展。"}
 
         if intent == "delete_request":
-            return self._delete_request(owner, t, request, bool(semantic.get("delete_current")))
+            return self._delete_request(owner, t, bool(semantic.get("delete_current")))
 
         if intent in {"next_batch", "select", "start_screen", "modify_jd", "pause", "restart_hiring", "retry_pending"}:
             self.requests.focus_for_owner(owner, request["request_id"])

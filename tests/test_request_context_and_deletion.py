@@ -167,3 +167,19 @@ def test_focus_switch_is_owner_scoped_and_deletion_clears_only_own_focus(tmp_pat
     repo.delete_for_owner('dingtalk:yusl2', own['request_id'])
     assert repo.focused_for_owner('dingtalk:yusl2') is None
     assert repo.focused_for_owner('dingtalk:wanglei29')['request_id'] == other['request_id']
+
+
+@pytest.mark.parametrize('has_old_request', [False, True])
+def test_delete_current_after_selection_targets_focus_not_old_paused_request(tmp_path, has_old_request):
+    wf = make_workflow(tmp_path, analyzer=NewRequestAnalyzer())
+    old = wf.requests.create('dingtalk:yusl2', {'position_title': '医学联络官', 'status': 'PAUSED'}) if has_old_request else None
+    selected = wf.requests.create('dingtalk:yusl2', {'position_title': '检验技术员', 'status': 'SELECTED'})
+    wf.requests.update_for_owner('dingtalk:yusl2', selected['request_id'], extra={'selected_candidate_id': 'C1'})
+    reply = wf.handle('dingtalk:yusl2', '删除当前招聘需求')
+    assert reply.get('request_id') == selected['request_id']
+    assert reply.get('state') == 'DELETED'
+    if old:
+        assert wf.requests.get_for_owner('dingtalk:yusl2', old['request_id'])['status'] == 'PAUSED'
+        repeated = wf.handle('dingtalk:yusl2', '删除当前招聘需求')
+        assert '已删除' not in repeated['message']
+        assert wf.requests.get_for_owner('dingtalk:yusl2', old['request_id']) is not None
