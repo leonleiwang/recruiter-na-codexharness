@@ -4,7 +4,7 @@
 
 ## 公开能力
 
-1. **发起/继续自己的招聘需求**。
+1. **发起/继续/删除自己的招聘需求**。
 2. **查看自己发起的招聘需求进展**。
 
 不要向用人部门开放画像库、Decision Policy、JD 模板库、简历数据库、其他人的招聘需求或内部 `decision_mode`。
@@ -37,7 +37,7 @@ LLM 不直接决定最终淘汰，也不产生正式候选人数值总分。Pyth
 
 ## 权限与数据
 
-`owner_staff_id = normalized DingTalk senderId` 是招聘工单权限事实源。所有公开读写必须 owner-scoped。
+`owner_staff_id = normalized DingTalk senderId` 是招聘工单权限事实源。所有公开读写和删除必须 owner-scoped。钉钉验证的 senderStaffId/OA 账号用于创建者标识，不能用聊天中自报的账号覆盖身份；同一创建者可有多个独立需求编号。删除仅移除本人招聘需求的业务入口并保留审计，不删除简历。
 
 - 标准画像：`ProfileRepository`。
 - 检验技术员 Decision Policy：`knowledge/recruiting/policies/inspection_technician_v1.json`。

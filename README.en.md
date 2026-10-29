@@ -8,13 +8,17 @@ It helps a hiring manager start or continue only their own hiring request, and v
 
 Documentation: [usage guide](USAGE.md), [Candidate Decision contract](docs/RECRUITMENT_DECISION_V5.md), and [resume parsing + capability/experience/trait matching](runtime/rn/resume_screening/README.md).
 
-## v0.2.1: resume-stage tag counts
+## v0.2.2: natural-language request context and owner-only deletion
+
+New hiring descriptions create a separate request and pause the previous one. An answer to the newest draft cannot be hijacked by an older same-title review. Filling an initially empty role triggers semantic profile matching. A requester may delete only their own request, by current context or request ID; ambiguous same-title references require an ID. Verified DingTalk staff/OA identity determines ownership; text claiming a different account never grants access. Requests keep unique IDs and deletion audit tombstones; resumes are unaffected.
+
+## Resume-stage tag counts
 
 The card counts only JD capability/experience labels that can be checked before an interview. Approved interview-only requirements are shown separately and excluded from both numerator and denominator, even when a resume contains related keywords. Three hits out of three resume-stage labels display as **3/3**; missing evidence remains in the denominator. The existing rule engine scans resume text; v5 retains eligibility, final decisions, ordering and interview focus. This is evidence coverage, not a talent score. Interview focus is shown as a question direction followed by its label, using approved criterion descriptions instead of repetitive missing-evidence text. Existing recommendation snapshots must be re-screened to adopt the new view.
 
-The public source version is recorded in `RELEASE_VERSION` (0.2.1); `VERSION` retains the workflow contract version 5.0.2.
+The public source version is recorded in `RELEASE_VERSION` (0.2.2); `VERSION` retains the workflow contract version 5.0.2.
 
-Release branch/tag: `release/v0.2.1` / `v0.2.1`. See [release notes](docs/releases/v0.2.1.md) for validation and limits.
+Release branch/tag: `release/v0.2.2` / `v0.2.2`. See [release notes](docs/releases/v0.2.2.md) for validation and limits.
 
 ## Developer preview
 

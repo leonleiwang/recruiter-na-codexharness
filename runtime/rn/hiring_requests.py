@@ -7,6 +7,7 @@ hiring manager cannot enumerate another person's requests by guessing IDs.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 import os
 import sqlite3
 import time
@@ -31,11 +32,12 @@ STATUSES = {
     "PAUSED",
     "CANCELLED",
     "CLOSED",
+    "DELETED",
 }
 
 
 def _now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    return datetime.now().astimezone().isoformat(timespec="microseconds")
 
 
 def _j(value: Any) -> str:
@@ -65,6 +67,11 @@ class HiringRequestRepository:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
+
+    @staticmethod
+    def _update_owned(conn: sqlite3.Connection, statement: str, values: Any) -> None:
+        if conn.execute(statement, values).rowcount != 1:
+            raise PermissionError("REQUEST_NOT_FOUND_OR_NOT_OWNED")
 
     def _init_schema(self) -> None:
         with self._connect() as conn:
@@ -99,6 +106,10 @@ class HiringRequestRepository:
                 );
                 CREATE INDEX IF NOT EXISTS idx_requests_owner_updated
                     ON recruitment_requests(owner_staff_id, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS recruitment_request_context (
+                    owner_staff_id TEXT PRIMARY KEY,
+                    request_id TEXT NOT NULL REFERENCES recruitment_requests(request_id)
+                );
                 CREATE TABLE IF NOT EXISTS recruitment_request_events (
                     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     request_id TEXT NOT NULL,
@@ -152,7 +163,7 @@ class HiringRequestRepository:
                        SET status='JD_READY', ranking_json='[]', recommendation_cursor=0,
                            recommended_candidate_ids_json='[]', previous_status='', trace_dir='',
                            sourcing_status='', new_resume_count=0, updated_at=?
-                       WHERE request_id=? AND owner_staff_id=?""",
+                       WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'""",
                     (_now(), row["request_id"], row["owner_staff_id"]),
                 )
                 self._event(
@@ -167,6 +178,8 @@ class HiringRequestRepository:
         if row is None:
             return None
         out = dict(row)
+        owner = str(out.get("owner_staff_id") or "")
+        out["creator_oa_account"] = owner.removeprefix("dingtalk:")
         out["request"] = _loads(out.pop("request_json", None), {})
         out["jd"] = _loads(out.pop("jd_json", None), {})
         out["ranking"] = _loads(out.pop("ranking_json", None), [])
@@ -217,12 +230,41 @@ class HiringRequestRepository:
                 ),
             )
             self._event(conn, request_id, owner, "REQUEST_CREATED", {"status": status})
+            self._set_focus(conn, owner, request_id)
         return self.get_for_owner(owner, request_id) or {}
+
+    @staticmethod
+    def _set_focus(conn: sqlite3.Connection, owner: str, request_id: str) -> None:
+        changed = conn.execute(
+            "INSERT INTO recruitment_request_context(owner_staff_id, request_id) "
+            "SELECT owner_staff_id, request_id FROM recruitment_requests "
+            "WHERE request_id=? AND owner_staff_id=? AND status!='DELETED' "
+            "ON CONFLICT(owner_staff_id) DO UPDATE SET request_id=excluded.request_id",
+            (request_id, owner),
+        )
+        if changed.rowcount != 1:
+            raise PermissionError("REQUEST_NOT_FOUND_OR_NOT_OWNED")
+
+    def focus_for_owner(self, owner: str, request_id: str) -> None:
+        with self._connect() as conn:
+            self._set_focus(conn, owner, request_id)
+
+    def focused_for_owner(self, owner: str, statuses: Iterable[str] | None = None) -> dict[str, Any] | None:
+        sql = ("SELECT r.* FROM recruitment_requests r JOIN recruitment_request_context c "
+               "ON c.request_id=r.request_id AND c.owner_staff_id=r.owner_staff_id "
+               "WHERE r.owner_staff_id=? AND r.status!='DELETED'")
+        params: list[Any] = [owner]
+        if statuses:
+            values = list(statuses)
+            sql += " AND r.status IN (" + ",".join("?" for _ in values) + ")"
+            params.extend(values)
+        with self._connect() as conn:
+            return self._row(conn.execute(sql, params).fetchone())
 
     def get_for_owner(self, owner_staff_id: str, request_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM recruitment_requests WHERE request_id=? AND owner_staff_id=?",
+                "SELECT * FROM recruitment_requests WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'",
                 (request_id, owner_staff_id),
             ).fetchone()
         return self._row(row)
@@ -233,12 +275,12 @@ class HiringRequestRepository:
 
     def list_for_owner(self, owner_staff_id: str, statuses: Iterable[str] | None = None, limit: int = 50) -> list[dict[str, Any]]:
         params: list[Any] = [owner_staff_id]
-        sql = "SELECT * FROM recruitment_requests WHERE owner_staff_id=?"
+        sql = "SELECT * FROM recruitment_requests WHERE owner_staff_id=? AND status!='DELETED'"
         values = list(statuses or [])
         if values:
             sql += " AND status IN (" + ",".join("?" for _ in values) + ")"
             params.extend(values)
-        sql += " ORDER BY updated_at DESC LIMIT ?"
+        sql += " ORDER BY updated_at DESC, rowid DESC LIMIT ?"
         params.append(max(1, int(limit)))
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
@@ -277,9 +319,9 @@ class HiringRequestRepository:
             for key, value in extra.items():
                 if key in allowed:
                     assignments[key] = value
-        sql = "UPDATE recruitment_requests SET " + ", ".join(f"{k}=?" for k in assignments) + " WHERE request_id=? AND owner_staff_id=?"
+        sql = "UPDATE recruitment_requests SET " + ", ".join(f"{k}=?" for k in assignments) + " WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'"
         with self._connect() as conn:
-            conn.execute(sql, [*assignments.values(), request_id, owner_staff_id])
+            self._update_owned(conn, sql, [*assignments.values(), request_id, owner_staff_id])
             self._event(conn, request_id, owner_staff_id, event_type, {"status": assignments["status"]})
         return self.get_for_owner(owner_staff_id, request_id) or {}
 
@@ -290,7 +332,7 @@ class HiringRequestRepository:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current = self._row(conn.execute(
-                "SELECT * FROM recruitment_requests WHERE request_id=? AND owner_staff_id=?",
+                "SELECT * FROM recruitment_requests WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'",
                 (request_id, owner_staff_id),
             ).fetchone())
             if current is None:
@@ -304,10 +346,10 @@ class HiringRequestRepository:
             payload = dict(current["request"])
             if pending_evaluations is not None:
                 payload["pending_evaluations"] = pending_evaluations
-            conn.execute(
+            self._update_owned(conn,
                 """UPDATE recruitment_requests SET ranking_json=?, recommendation_cursor=?,
                    request_json=?, last_screen_resume_count=?, status=?, trace_dir=?, updated_at=?
-                   WHERE request_id=? AND owner_staff_id=?""",
+                   WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'""",
                 (_j(ranking), current["recommendation_cursor"] if append else 0, _j(payload),
                  int(resume_count), "CANDIDATES_READY", trace_dir, _now(), request_id, owner_staff_id),
             )
@@ -322,10 +364,10 @@ class HiringRequestRepository:
             raise PermissionError("REQUEST_NOT_FOUND_OR_NOT_OWNED")
         seen = list(current.get("recommended_candidate_ids") or [])
         with self._connect() as conn:
-            conn.execute(
+            self._update_owned(conn,
                 """UPDATE recruitment_requests SET ranking_json=?, recommendation_cursor=0,
                    recommended_candidate_ids_json=?, last_screen_resume_count=?, status=?, trace_dir=?, updated_at=?
-                   WHERE request_id=? AND owner_staff_id=?""",
+                   WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'""",
                 (_j(ranking), _j(seen), int(resume_count), "CANDIDATES_READY", trace_dir, _now(), request_id, owner_staff_id),
             )
             self._event(conn, request_id, owner_staff_id, "RANKING_SNAPSHOT_CREATED", {"count": len(ranking), "resume_count": resume_count})
@@ -358,8 +400,8 @@ class HiringRequestRepository:
         if batch:
             payload["last_batch_candidate_ids"] = [x["candidate_id"] for x in batch]
         with self._connect() as conn:
-            conn.execute(
-                "UPDATE recruitment_requests SET recommendation_cursor=?, recommended_candidate_ids_json=?, request_json=?, status=?, sourcing_status=?, updated_at=? WHERE request_id=? AND owner_staff_id=?",
+            self._update_owned(conn,
+                "UPDATE recruitment_requests SET recommendation_cursor=?, recommended_candidate_ids_json=?, request_json=?, status=?, sourcing_status=?, updated_at=? WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'",
                 (new_cursor, _j(recommended), _j(payload), new_status, "WAITING_HR_SOURCING" if new_status == "WAITING_HR_SOURCING" else "", _now(), request_id, owner_staff_id),
             )
             self._event(conn, request_id, owner_staff_id, "CANDIDATE_BATCH_SHOWN", {"candidate_ids": [x.get("candidate_id") for x in batch]})
@@ -373,12 +415,26 @@ class HiringRequestRepository:
         if candidate_id not in shown:
             raise ValueError("CANDIDATE_NOT_RECOMMENDED_TO_OWNER")
         with self._connect() as conn:
-            conn.execute(
-                "UPDATE recruitment_requests SET selected_candidate_id=?, status='SELECTED', updated_at=? WHERE request_id=? AND owner_staff_id=?",
+            self._update_owned(conn,
+                "UPDATE recruitment_requests SET selected_candidate_id=?, status='SELECTED', updated_at=? WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'",
                 (candidate_id, _now(), request_id, owner_staff_id),
             )
             self._event(conn, request_id, owner_staff_id, "CANDIDATE_SELECTED", {"candidate_id": candidate_id})
         return self.get_for_owner(owner_staff_id, request_id) or {}
+
+    def delete_for_owner(self, owner_staff_id: str, request_id: str) -> None:
+        """Hide only this owner's request, retaining a deletion audit tombstone."""
+        with self._connect() as conn:
+            changed = conn.execute(
+                "UPDATE recruitment_requests SET status='DELETED', updated_at=? "
+                "WHERE request_id=? AND owner_staff_id=? AND status!='DELETED'",
+                (_now(), request_id, owner_staff_id),
+            )
+            if changed.rowcount != 1:
+                raise PermissionError("REQUEST_NOT_FOUND_OR_NOT_OWNED")
+            conn.execute("DELETE FROM recruitment_request_context WHERE owner_staff_id=? AND request_id=?",
+                         (owner_staff_id, request_id))
+            self._event(conn, request_id, owner_staff_id, "REQUEST_DELETED")
 
     def events_for_owner(self, owner_staff_id: str, request_id: str) -> list[dict[str, Any]]:
         if self.get_for_owner(owner_staff_id, request_id) is None:
