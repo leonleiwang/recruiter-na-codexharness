@@ -1,4 +1,40 @@
-# Changelog
+# 更新日志
+
+记录可核实的源码变化；源码 tag、GitHub Release、服务器部署和业务验收分别记录。旧记录保留原文，不补造历史版本或发布日期。
+
+## [Unreleased]
+
+暂无已交付而未归档的改动。
+
+## [v0.2.1] — 2026-10-29
+
+### Changed
+
+- 卡片“简历阶段符合标签 x/y”只统计本次 JD 中本阶段可核验的能力/经验；面试确认项同时移出分子、分母，并在 JD 确认卡片单列。
+- 沿用现有规则引擎匹配原文；证据未知的简历核验项仍保留在分母，不按命中数凑满分。v5 资格、候选决策和推荐顺序不受本次展示修复影响。
+- 面试重点改为“提问方向（面试标签）”，使用现有判据描述，旧快照采用通用提问方向，不再重复展示缺少证据说明。
+- README 默认中文，英文移至 README.en.md；保留 README.zh.md 兼容入口。
+
+### Fixed
+
+- 修复简历阶段以只能面试确认的标签撑大分母的问题：本阶段三项全部命中时正确显示 3/3。
+- 继承 PR #4 的 JD 标签匹配、报考/待考未持证说明与愿意到岗状态展示。
+
+### Added
+
+- 发布说明、验证边界、个人测试部署回滚记录；统一文本换行与编辑器配置。
+- 简历阶段分组、证据缺失、面试关键词不扩大分母和面试重点格式回归测试。
+
+### Security
+
+- 补充数据库旁文件、编辑器缓存和本地归档包的 Git 排除规则。私有数据、配置、工单和运行依赖不进入源码 Release。
+- 敏感属性不参与候选决策与推荐顺序；本次不改 Candidate Decision Policy。
+
+验证、已知限制与发布范围见 [v0.2.1](docs/releases/v0.2.1.md)。
+
+<details>
+<summary>历史实现记录（保留原文；未独立发布的条目不代表已有 tag 或业务验收）</summary>
+
 
 ## Unreleased — JD rule tags on hiring cards, v5 decisions retained
 
@@ -441,3 +477,5 @@
 - Added candidate selection, pause/resume, WAITING_HR_SOURCING, and new-resume continuation semantics.
 - Removed profile/JD/resume full-library browsing from the hiring-manager product path.
 - Archived v3.x public/admin-oriented Skills outside `.agents/skills`; only v4 hiring-request and my-hiring-progress remain discoverable.
+
+</details>
