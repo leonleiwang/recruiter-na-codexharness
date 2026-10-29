@@ -198,7 +198,11 @@ def decide_candidate(criteria: dict[str, Any], assessment: dict[str, Any], resum
                 confirmed_resume_evidence_count += 1
         elif mode == "interview_verify":
             if result in {"not_satisfied", "unknown"}:
-                interview_focus.append({"item": name, "reason": reason or "该项需在面试中确认"})
+                interview_focus.append({
+                    "item": name,
+                    "reason": reason or "该项需在面试中确认",
+                    "question_direction": str(definition.get("description") or "围绕实际经历提问"),
+                })
         elif mode == "preference":
             if result == "satisfied":
                 preference_signals.append({

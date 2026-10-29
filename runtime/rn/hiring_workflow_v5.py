@@ -9,7 +9,8 @@ from typing import Any
 from rn.hiring_requests import HiringRequestRepository
 from rn.progress import emit_progress
 from rn.resume_screening.decision.screening_v5 import UnsupportedScreeningPolicy
-from rn.resume_screening.analysis.jd_card_tags import jd_tag_names
+from rn.resume_screening.analysis.jd_card_tags import jd_tag_groups
+from rn.resume_screening.decision.criteria_adapter_v5 import build_actual_criteria, supports_inspection_technician
 from rn.resume_screening.jd.generator import build_request_jd, render_jd_summary
 from rn.resume_delivery import ResumeDeliveryError
 
@@ -232,6 +233,16 @@ def _numbered_items(rows: Any, limit: int = 4) -> list[str]:
     return [f"{numerals[index]} {item}" for index, item in enumerate(rendered.split("；"))]
 
 
+def _interview_items(rows: Any, limit: int = 4) -> list[str]:
+    out = []
+    for row in (rows or [])[:limit]:
+        label = str(row.get("item") or row.get("criterion") or "").strip() if isinstance(row, dict) else str(row).strip()
+        direction = str(row.get("question_direction") or "围绕实际经历提问").strip() if isinstance(row, dict) else "围绕实际经历提问"
+        if label:
+            out.append(f"{'①②③④'[len(out)]} {direction}（{label}）")
+    return out
+
+
 def _latest_batch(request: dict[str, Any], shown: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ids = (request.get("request") or {}).get("last_batch_candidate_ids")
     if ids is None:  # old snapshots remain selectable without a data migration
@@ -286,7 +297,7 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
         if bits:
             lines.append("｜".join(bits))
         tag_total = int(item.get("applicable_tag_count") or 0)
-        tag_summary = f"符合标签：{int(item.get('matched_tag_count') or 0)}/{tag_total}" if tag_total else "已按本次岗位标签完成筛选"
+        tag_summary = f"简历阶段符合标签：{int(item.get('matched_tag_count') or 0)}/{tag_total}" if tag_total else "已按本次岗位标签完成筛选"
         if not tag_total and item.get("tag_match_source") == "resume_screening_jd_rules":
             tag_summary = "本次JD未解析出可匹配的能力/经验标签"
         if tag_total:
@@ -303,7 +314,7 @@ def _render_candidates(request: dict[str, Any], batch: list[dict[str, Any]]) -> 
         verification = _numbered_items(item.get("needs_verification"), 4)
         if verification:
             lines.append("**待核实：**\n" + "\n".join(verification))
-        interview = _numbered_items(item.get("interview_focus"), 4)
+        interview = _interview_items(item.get("interview_focus"), 4)
         if interview:
             lines.append("**面试重点：**\n" + "\n".join(interview))
     lines.append("\n---\n\n不合适可回复 **「换一批」**；看中某人可回复 **「选第1个/第2个/第3个」** 或直接说名字。")
@@ -350,7 +361,8 @@ class HiringManagerWorkflow:
         except Exception:
             related = []
         jd = build_request_jd(request["request_id"], request["request"]["fields"], getattr(profile, "raw", None), related[0] if related else None)
-        jd["screening_tag_names"] = jd_tag_names(jd)
+        criteria = build_actual_criteria(request, profile) if supports_inspection_technician(request, profile) else None
+        jd.update(jd_tag_groups(jd, criteria))
         request = self.requests.update_for_owner(owner, request["request_id"], jd=jd, status="JD_READY", event_type="JD_READY")
         return {"handled": True, "request_id": request["request_id"], "state": "JD_READY", "message": render_jd_summary(jd)}
 
