@@ -180,6 +180,22 @@ def test_jd_rule_hits_do_not_require_v5_llm_tag_confirmation(tmp_path):
     assert item['matched_tag_count'] == item['applicable_tag_count'] == 1
 
 
+def test_hard_requirement_standard_tags_keep_resume_and_interview_stages_separate():
+    from rn.resume_screening.analysis.jd_card_tags import jd_tag_groups, match_jd_card_tags
+    jd = {'title': '检验技术员', 'hard_requirements': [
+        {'name': '沟通表达能力', 'gate_type': 'HARD_GATE'},
+        {'name': '检验科经验', 'gate_type': 'HARD_GATE'},
+        {'name': '人员带教经验', 'gate_type': 'HARD_GATE'}]}
+    groups = jd_tag_groups(jd, CRITERIA)
+    assert groups == {'screening_tag_names': ['检验科经验', '人员带教经验'],
+                      'interview_tag_names': ['沟通表达能力']}
+    result = match_jd_card_tags(jd, {'raw_text': '检验科3年工作经验。善于沟通表达。'}, CRITERIA)
+    assert result['applicable_tag_count'] == 2
+    assert result['matched_tag_count'] == 1
+    assert result['matched_tag_names'] == ['检验科经验']
+    assert result['interview_tag_names'] == ['沟通表达能力']
+
+
 def test_resume_stage_denominator_excludes_interview_only_labels(tmp_path):
     req = request()
     req['jd'] = {'title': '检验技术员', 'key_experience_skills': [
